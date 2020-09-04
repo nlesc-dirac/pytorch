@@ -178,10 +178,12 @@ criterion=nn.CrossEntropyLoss()
 optimizer = LBFGSNew(net.parameters(), history_size=7, max_iter=2, line_search_fn=True,batch_mode=True)
 
 
+load_model=False
 # update from a saved model 
-#checkpoint=torch.load('./res.model')
-#net.load_state_dict(checkpoint['model_state_dict'])
-#net.train() # initialize for training (BN,dropout)
+if load_model:
+  checkpoint=torch.load('./res18.model',map_location=mydevice)
+  net.load_state_dict(checkpoint['model_state_dict'])
+  net.train() # initialize for training (BN,dropout)
 
 start_time=time.time()
 use_lbfgs=True
