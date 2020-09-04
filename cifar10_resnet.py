@@ -163,10 +163,13 @@ def ResNet152():
     return ResNet(Bottleneck, [3,8,36,3])
 
 
-net=ResNet18().to(mydevice)
-# Enable this to use wide residual net https://arxiv.org/abs/1605.07146
-#net=torchvision.models.resnet.wide_resnet50_2().to(mydevice)
-
+# enable this to use wide ResNet
+wide_resnet=False
+if not wide_resnet:
+  net=ResNet18().to(mydevice)
+else:
+  # use wide residual net https://arxiv.org/abs/1605.07146
+  net=torchvision.models.resnet.wide_resnet50_2().to(mydevice)
 
 lambda1=0.000001
 lambda2=0.001
@@ -207,19 +210,24 @@ for epoch in range(20):
      loss.backward()
      optimizer.step()
     else:
-
-      layer1=torch.cat([x.view(-1) for x in net.layer1.parameters()])
-      layer2=torch.cat([x.view(-1) for x in net.layer2.parameters()])
-      layer3=torch.cat([x.view(-1) for x in net.layer3.parameters()])
-      layer4=torch.cat([x.view(-1) for x in net.layer4.parameters()])
+      if not wide_resnet:
+        layer1=torch.cat([x.view(-1) for x in net.layer1.parameters()])
+        layer2=torch.cat([x.view(-1) for x in net.layer2.parameters()])
+        layer3=torch.cat([x.view(-1) for x in net.layer3.parameters()])
+        layer4=torch.cat([x.view(-1) for x in net.layer4.parameters()])
 
       def closure():
         if torch.is_grad_enabled():
          optimizer.zero_grad()
         outputs=net(inputs)
-        l1_penalty=lambda1*(torch.norm(layer1,1)+torch.norm(layer2,1)+torch.norm(layer3,1)+torch.norm(layer4,1))
-        l2_penalty=lambda2*(torch.norm(layer1,2)+torch.norm(layer2,2)+torch.norm(layer3,2)+torch.norm(layer4,2))
-        loss=criterion(outputs,labels)+l1_penalty+l2_penalty
+        if not wide_resnet:
+          l1_penalty=lambda1*(torch.norm(layer1,1)+torch.norm(layer2,1)+torch.norm(layer3,1)+torch.norm(layer4,1))
+          l2_penalty=lambda2*(torch.norm(layer1,2)+torch.norm(layer2,2)+torch.norm(layer3,2)+torch.norm(layer4,2))
+          loss=criterion(outputs,labels)+l1_penalty+l2_penalty
+        else:
+          l1_penalty=0
+          l2_penalty=0
+          loss=criterion(outputs,labels)
         if loss.requires_grad:
           loss.backward()
           #print('loss %f l1 %f l2 %f'%(loss,l1_penalty,l2_penalty))
