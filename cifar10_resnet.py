@@ -164,6 +164,8 @@ def ResNet152():
 
 
 net=ResNet18().to(mydevice)
+# Enable this to use wide residual net https://arxiv.org/abs/1605.07146
+#net=torchvision.models.resnet.wide_resnet50_2().to(mydevice)
 
 
 lambda1=0.000001
@@ -234,7 +236,7 @@ for epoch in range(20):
 
     # print statistics
     if i%(batches_for_report) == (batches_for_report-1): # after every epoch
-      print('%f: [%d, %5d] loss: %.3f'%
+      print('%f: [%d, %5d] loss: %.5f'%
          (time.time()-start_time,epoch+1,i+1,running_loss/batches_for_report))
       running_loss=0.0
 
