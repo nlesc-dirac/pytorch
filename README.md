@@ -20,3 +20,8 @@ Files included are:
 <img src="loss.png" alt="ResNet18/101 training loss/time" width="800"/>
 
 The above figure shows the training loss and training time [using Colab](https://colab.research.google.com/notebooks/intro.ipynb) with one GPU. ResNet18 and ResNet101 models are used. Test accuracy after 20 epochs: 84% for LBFGS and 82% for Adam.
+
+Changing the activation from commonly used ```ReLU``` to others like ```ELU``` gives faster convergence in LBFGS, as seen in the figure below.
+
+<img src="activation.png" alt="ResNet Wide 50-2 training loss" width="400"/>
+
