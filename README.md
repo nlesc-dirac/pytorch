@@ -32,7 +32,7 @@ from lbfgsnew import LBFGSNew
 optimizer = LBFGSNew(model.parameters(), history_size=7, max_iter=100, line_search_fn=True, batch_mode=False)
 ```
 
-Example usege in minibatch mode:
+Example usage in minibatch mode:
 
 ```
 from lbfgsnew import LBFGSNew
