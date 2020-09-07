@@ -25,3 +25,16 @@ Changing the activation from commonly used ```ReLU``` to others like ```ELU``` g
 
 <img src="activation.png" alt="ResNet Wide 50-2 training loss" width="400"/>
 
+Example usage in full batch mode:
+
+```
+from lbfgsnew import LBFGSNew
+optimizer = LBFGSNew(model.parameters(), history_size=7, max_iter=100, line_search_fn=True, batch_mode=False)
+```
+
+Example usege in minibatch mode:
+
+```
+from lbfgsnew import LBFGSNew
+optimizer = LBFGSNew(model.parameters(), history_size=7, max_iter=4, line_search_fn=True, batch_mode=True)
+```
