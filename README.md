@@ -15,7 +15,7 @@ Files included are:
 
 ``` lbfgs.py ```: Symlink to ``` lbfgsnew.py ```
 
-``` cifar10_resnet.py ```: CIFAR10 ResNet training example (see figure below)
+``` cifar10_resnet.py ```: CIFAR10 ResNet training example (see figures below)
 
 <img src="loss.png" alt="ResNet18/101 training loss/time" width="800"/>
 
@@ -24,6 +24,10 @@ The above figure shows the training loss and training time [using Colab](https:/
 Changing the activation from commonly used ```ReLU``` to others like ```ELU``` gives faster convergence in LBFGS, as seen in the figure below.
 
 <img src="activation.png" alt="ResNet Wide 50-2 training loss" width="400"/>
+
+Here is a comparison of both training error and test accuracy for ResNet9 using LBFGS and Adam.
+
+<img src="resnet9.png" alt="ResNet 9 training loss and test accuracy" width="400"/>
 
 Example usage in full batch mode:
 
@@ -36,5 +40,5 @@ Example usage in minibatch mode:
 
 ```
 from lbfgsnew import LBFGSNew
-optimizer = LBFGSNew(model.parameters(), history_size=7, max_iter=4, line_search_fn=True, batch_mode=True)
+optimizer = LBFGSNew(model.parameters(), history_size=7, max_iter=2, line_search_fn=True, batch_mode=True)
 ```

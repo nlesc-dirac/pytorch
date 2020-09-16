@@ -146,6 +146,8 @@ class ResNet(nn.Module):
         out = self.linear(out)
         return out
 
+def ResNet9():
+    return ResNet(BasicBlock, [1,1,1,1])
 
 def ResNet18():
     return ResNet(BasicBlock, [2,2,2,2])
@@ -170,6 +172,21 @@ if not wide_resnet:
 else:
   # use wide residual net https://arxiv.org/abs/1605.07146
   net=torchvision.models.resnet.wide_resnet50_2().to(mydevice)
+
+
+#####################################################
+def verification_error_check(net):
+   correct=0
+   total=0
+   for data in testloader:
+     images,labels=data
+     outputs=net(Variable(images).to(mydevice))
+     _,predicted=torch.max(outputs.data,1)
+     correct += (predicted==labels.to(mydevice)).sum()
+     total += labels.size(0)
+
+   return 100*correct//total
+#####################################################
 
 lambda1=0.000001
 lambda2=0.001
@@ -243,9 +260,10 @@ for epoch in range(20):
        break
 
     # print statistics
-    if i%(batches_for_report) == (batches_for_report-1): # after every epoch
-      print('%f: [%d, %5d] loss: %.5f'%
-         (time.time()-start_time,epoch+1,i+1,running_loss/batches_for_report))
+    if i%(batches_for_report) == (batches_for_report-1): # after every 'batches_for_report'
+      print('%f: [%d, %5d] loss: %.5f accuracy: %.3f'%
+         (time.time()-start_time,epoch+1,i+1,running_loss/batches_for_report,
+         verification_error_check(net)))
       running_loss=0.0
 
 print('Finished Training')
