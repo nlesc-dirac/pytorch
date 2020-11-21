@@ -7,6 +7,8 @@ Examples of use:
 
   * Calibration and other inverse problems: see [radio interferometric calibration](https://github.com/SarodYatawatta/calibration-pytorch-test).
 
+  * K-harmonic means clustering: see [LOFAR system health management](https://github.com/SarodYatawatta/LSHM). 
+
   * Other problems: see [this example](https://ieeexplore.ieee.org/abstract/document/8588731).
 
 Files included are:
