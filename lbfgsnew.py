@@ -84,9 +84,9 @@ class LBFGSNew(Optimizer):
             if p.grad is None:
                 view = p.data.new(p.data.numel()).zero_()
             elif p.grad.data.is_sparse:
-                view = p.grad.data.to_dense().view(-1)
+                view = p.grad.data.to_dense().contiguous().view(-1)
             else:
-                view = p.grad.data.view(-1)
+                view = p.grad.data.contiguous().view(-1)
             views.append(view)
         return torch.cat(views, 0)
 
@@ -105,7 +105,7 @@ class LBFGSNew(Optimizer):
         new_params = []
         for p in self._params:
             numel = p.numel()
-            new_param1=p.data.clone().view(-1)
+            new_param1=p.data.clone().contiguous().view(-1)
             offset += numel
             new_params.append(new_param1)
         assert offset == self._numel()
