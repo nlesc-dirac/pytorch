@@ -44,3 +44,5 @@ Example usage in minibatch mode:
 from lbfgsnew import LBFGSNew
 optimizer = LBFGSNew(model.parameters(), history_size=7, max_iter=2, line_search_fn=True, batch_mode=True)
 ```
+
+Note: for certain problems, the gradient can also be part of the cost, for example in TV regularization. In such situations, give the option ```cost_use_gradient=True``` to ```LBFGSNew()```. However, this will increase the computational cost, so only use when needed.

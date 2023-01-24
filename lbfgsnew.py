@@ -33,8 +33,9 @@ class LBFGSNew(Optimizer):
         tolerance_change (float): termination tolerance on function
             value/parameter changes (default: 1e-9).
         history_size (int): update history size (default: 7).
-        line_search_fn: if True, use cubic interpolation to findstep size, if False: fixed step size
-        batch_mode: True for stochastic version (default False)
+        line_search_fn: if True, use cubic interpolation to findstep size, if False: fixed step size (default: False)
+        batch_mode: True for stochastic version (default: False)
+        cost_use_gradient: set this to True when the cost function also needs the gradient, for example in TV (total variation) regularization. (default: False)
 
         Example usage for full batch mode:
 
@@ -53,17 +54,19 @@ class LBFGSNew(Optimizer):
                loss.backward()
              return loss
 
+        Note: Some cost functions also use the gradient itself (for example as a regularization term). In this case, you need to set cost_use_gradient=True.
+
     """
 
     def __init__(self, params, lr=1, max_iter=10, max_eval=None,
                  tolerance_grad=1e-5, tolerance_change=1e-9, history_size=7,
-                 line_search_fn=False, batch_mode=False):
+                 line_search_fn=False, batch_mode=False, cost_use_gradient=False):
         if max_eval is None:
             max_eval = max_iter * 5 // 4
         defaults = dict(lr=lr, max_iter=max_iter, max_eval=max_eval,
                         tolerance_grad=tolerance_grad, tolerance_change=tolerance_change,
                         history_size=history_size, line_search_fn=line_search_fn,
-                        batch_mode=batch_mode)
+                        batch_mode=batch_mode, cost_use_gradient=cost_use_gradient)
         super(LBFGSNew, self).__init__(params, defaults)
 
         if len(self.param_groups) != 1:
@@ -523,6 +526,7 @@ class LBFGSNew(Optimizer):
         history_size = group['history_size']
 
         batch_mode = group['batch_mode']
+        cost_use_gradient = group['cost_use_gradient']
 
 
         # NOTE: LBFGS has only global state, but we register it as state for
@@ -691,12 +695,14 @@ class LBFGSNew(Optimizer):
                 #FF#################################
                 # Note: we disable gradient calculation during line search
                 # because it is not needed
-                torch.set_grad_enabled(False)
+                if not cost_use_gradient:
+                 torch.set_grad_enabled(False)
                 if not batch_mode:
                  t=self._linesearch_cubic(closure,d,1e-6) 
                 else:
                  t=self._linesearch_backtrack(closure,d,flat_grad,alphabar)
-                torch.set_grad_enabled(True)
+                if not cost_use_gradient:
+                 torch.set_grad_enabled(True)
 
                 if math.isnan(t):
                   print('Warning: stepsize nan')
