@@ -104,24 +104,12 @@ class LBFGSNew(Optimizer):
 
     #FF copy the parameter values out, create a single vector
     def _copy_params_out(self):
-        offset = 0
-        new_params = []
-        for p in self._params:
-            numel = p.numel()
-            new_param1=p.data.clone().contiguous().view(-1)
-            offset += numel
-            new_params.append(new_param1)
-        assert offset == self._numel()
-        return torch.cat(new_params,0)
+        return [p.clone(memory_format=torch.contiguous_format) for p in self._params]
 
     #FF copy the parameter values back, dividing the vector into a list
     def _copy_params_in(self,new_params):
-        offset = 0
-        for p in self._params:
-            numel = p.numel()
-            p.data.copy_(new_params[offset:offset+numel].view_as(p.data))
-            offset += numel
-        assert offset == self._numel()
+        for p, pdata in zip(self._params, new_params):
+            p.copy_(pdata)
 
     #FF line search xk=self._params, pk=step direction, gk=gradient, alphabar=max. step size
     def _linesearch_backtrack(self,closure,pk,gk,alphabar):
@@ -608,10 +596,10 @@ class LBFGSNew(Optimizer):
                    # moment <- oldmoment + (grad-oldmean)(grad-newmean)
                    # variance = moment/(niter-1)
 
-                   g_old=flat_grad.clone()
+                   g_old=flat_grad.clone(memory_format=torch.contiguous_format)
                    g_old.add_(running_avg,alpha=-1.0) # grad-oldmean
                    running_avg.add_(g_old,alpha=1.0/state['n_iter']) # newmean
-                   g_new=flat_grad.clone()
+                   g_new=flat_grad.clone(memory_format=torch.contiguous_format)
                    g_new.add_(running_avg,alpha=-1.0) # grad-newmean
                    running_avg_sq.addcmul_(g_new,g_old,value=1) # +(grad-newmean)(grad-oldmean)
                    alphabar=1/(1+running_avg_sq.sum()/((state['n_iter']-1)*(grad_nrm)))
@@ -663,7 +651,7 @@ class LBFGSNew(Optimizer):
                     r.add_(old_stps[i],alpha=al[i] - be_i)
 
             if prev_flat_grad is None:
-                prev_flat_grad = flat_grad.clone()
+                prev_flat_grad = flat_grad.clone(memory_format=torch.contiguous_format)
 
             else:
                 prev_flat_grad.copy_(flat_grad)
