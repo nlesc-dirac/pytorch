@@ -1,5 +1,5 @@
 # LBFGS optimizer
-An improved LBFGS optimizer for PyTorch is provided with the code. Further details are given [in this paper](https://ieeexplore.ieee.org/document/8755567). Also see [this introduction](http://sagecal.sourceforge.net/pytorch/index.html).
+An improved LBFGS (and LBFGS-B) optimizer for PyTorch is provided with the code. Further details are given [in this paper](https://ieeexplore.ieee.org/document/8755567). Also see [this introduction](http://sagecal.sourceforge.net/pytorch/index.html).
 
 Examples of use:
 
@@ -14,6 +14,8 @@ Examples of use:
 Files included are:
 
 ``` lbfgsnew.py ```: New LBFGS optimizer
+
+``` lbfgsb.py ```: LBFGS-B optimizer (with bound constraints)
 
 ``` lbfgs.py ```: Symlink to ``` lbfgsnew.py ```
 
