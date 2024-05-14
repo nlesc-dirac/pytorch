@@ -1,4 +1,4 @@
-# This is an exmple of training an KAN model, original at
+# This is an exmple of training a KAN model, original at
 # https://kindxiaoming.github.io/pykan/Examples/Example_6_PDE.html
 # using the LBFGS-B optimizer
 
@@ -17,9 +17,9 @@ ranges = [-1, 1]
 
 model = KAN(width=[2,2,1], grid=5, k=3, grid_eps=1.0, noise_scale_base=0.25)
 
-# get all parameters (may not be trainable)
+# get all parameters (all may not be trainable)
 n_params = sum([np.prod(p.size()) for p in model.parameters()])
-# lower/upper bounds
+# lower/upper bounds for parameters
 x_l=torch.ones(n_params)*(-100.0)
 x_u=torch.ones(n_params)*(100.0)
 
@@ -34,7 +34,7 @@ sol_fun = lambda x: torch.sin(torch.pi*x[:,[0]])*torch.sin(torch.pi*x[:,[1]])
 source_fun = lambda x: -2*torch.pi**2 * torch.sin(torch.pi*x[:,[0]])*torch.sin(torch.pi*x[:,[1]])
 
 # interior
-sampling_mode = 'random' # 'radnom' or 'mesh'
+sampling_mode = 'random' # 'random' or 'mesh'
 
 x_mesh = torch.linspace(ranges[0],ranges[1],steps=np_i)
 y_mesh = torch.linspace(ranges[0],ranges[1],steps=np_i)
