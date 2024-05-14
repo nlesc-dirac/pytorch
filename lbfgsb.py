@@ -32,6 +32,7 @@ class LBFGSB(Optimizer):
             value/parameter changes (default: 1e-20).
         history_size (int): update history size (default: 7).
         batch_mode: True for stochastic version (default: False)
+        cost_use_gradient: set this to True when the cost function also needs the gradient, for example in TV (total variation) regularization. (default: False)
 
     Example:
     ------
@@ -57,11 +58,12 @@ class LBFGSB(Optimizer):
 
     def __init__(self, params, lower_bound, upper_bound, max_iter=10,
                  tolerance_grad=1e-5, tolerance_change=1e-20, history_size=7,
-                 batch_mode=False):
+                 batch_mode=False, cost_use_gradient=False):
         defaults = dict(max_iter=max_iter,
                         tolerance_grad=tolerance_grad, tolerance_change=tolerance_change,
                         history_size=history_size,
-                        batch_mode=batch_mode)
+                        batch_mode=batch_mode,
+                        cost_use_gradient=cost_use_gradient)
         super(LBFGSB, self).__init__(params, defaults)
 
         if len(self.param_groups) != 1:
@@ -121,17 +123,19 @@ class LBFGSB(Optimizer):
 
     #copy the parameter values out, create a list of vectors
     def _copy_params_out(self):
-        return [p.clone(memory_format=torch.contiguous_format) for p in self._params]
+        return [p.flatten().clone(memory_format=torch.contiguous_format) for p in self._params]
 
     #copy the parameter values back, dividing the list appropriately
     def _copy_params_in(self,new_params):
         for p, pdata in zip(self._params, new_params):
-            p.data.copy_(pdata.data)
+            p.data.copy_(pdata.view_as(p).data)
 
     # restrict parameters to constraints 
     def _fit_to_constraints(self):
         params=[]
         for p in self._params:
+            # make a vector
+            p = p.flatten()
             params.append(p)
         x=torch.cat(params,0)
         for i in range(x.numel()):
@@ -501,6 +505,7 @@ class LBFGSB(Optimizer):
         history_size = group['history_size']
 
         batch_mode = group['batch_mode']
+        cost_use_gradient = group['cost_use_gradient']
 
 
         # NOTE: LBFGS has only global state, but we register it as state for
@@ -539,9 +544,11 @@ class LBFGSB(Optimizer):
                 if not batch_mode:
                   alpha=self._strong_wolfe(closure,f,g,p)
                 else:
-                  torch.set_grad_enabled(False)
+                  if not cost_use_gradient:
+                        torch.set_grad_enabled(False)
                   alpha=self._linesearch_backtrack(closure,f,g,p,self.alphabar)
-                  torch.set_grad_enabled(True)
+                  if not cost_use_gradient:
+                        torch.set_grad_enabled(True)
 
             self._add_grad(alpha,p)
 
