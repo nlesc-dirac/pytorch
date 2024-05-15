@@ -558,7 +558,6 @@ class LBFGSB(Optimizer):
             x=torch.cat(self._copy_params_out(),0).detach()
             s=x-x_old
             curv=abs(torch.dot(s,y))
-            print(f'{n_iter} {f}')
             n_iter +=1
             state['n_iter'] +=1
 
