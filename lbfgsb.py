@@ -224,7 +224,7 @@ class LBFGSB(Optimizer):
         else:
           dt_min=-fp/self._eps
         t_old=0
-
+        # find lowest index i where F[i] is positive (minimum t)
         for j in range(self._n):
             i=j
             if F[i]>=0.0:
@@ -524,7 +524,7 @@ class LBFGSB(Optimizer):
         g=self._gather_flat_grad()
         abs_grad_sum = g.abs().sum()
 
-        if abs_grad_sum <= tolerance_grad:
+        if torch.isnan(abs_grad_sum) or abs_grad_sum <= tolerance_grad:
             return orig_loss
 
         n_iter=0

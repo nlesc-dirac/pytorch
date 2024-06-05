@@ -533,7 +533,7 @@ class LBFGSNew(Optimizer):
         flat_grad = self._gather_flat_grad()
         abs_grad_sum = flat_grad.abs().sum()
 
-        if abs_grad_sum <= tolerance_grad:
+        if torch.isnan(abs_grad_sum) or abs_grad_sum <= tolerance_grad:
             return orig_loss
 
         # tensors cached in state (for tracing)
