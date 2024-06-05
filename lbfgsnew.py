@@ -33,7 +33,7 @@ class LBFGSNew(Optimizer):
         tolerance_change (float): termination tolerance on function
             value/parameter changes (default: 1e-9).
         history_size (int): update history size (default: 7).
-        line_search_fn: if True, use cubic interpolation to findstep size, if False: fixed step size (default: False)
+        line_search_fn: if True, use cubic interpolation to findstep size, if False: fixed step size (default: True)
         batch_mode: True for stochastic version (default: False)
         cost_use_gradient: set this to True when the cost function also needs the gradient, for example in TV (total variation) regularization. (default: False)
 
@@ -60,7 +60,7 @@ class LBFGSNew(Optimizer):
 
     def __init__(self, params, lr=1, max_iter=10, max_eval=None,
                  tolerance_grad=1e-5, tolerance_change=1e-9, history_size=7,
-                 line_search_fn=False, batch_mode=False, cost_use_gradient=False):
+                 line_search_fn=True, batch_mode=False, cost_use_gradient=False):
         if max_eval is None:
             max_eval = max_iter * 5 // 4
         defaults = dict(lr=lr, max_iter=max_iter, max_eval=max_eval,
@@ -104,11 +104,12 @@ class LBFGSNew(Optimizer):
 
     #FF copy the parameter values out, create a single vector
     def _copy_params_out(self):
-        return [p.clone(memory_format=torch.contiguous_format) for p in self._params]
+        return [p.detach().clone(memory_format=torch.contiguous_format) for p in self._params]
 
     #FF copy the parameter values back, dividing the vector into a list
     def _copy_params_in(self,new_params):
-        for p, pdata in zip(self._params, new_params):
+        with torch.no_grad():
+          for p, pdata in zip(self._params, new_params):
             p.copy_(pdata)
 
     #FF line search xk=self._params, pk=step direction, gk=gradient, alphabar=max. step size
@@ -213,7 +214,6 @@ class LBFGSNew(Optimizer):
 
         # make a copy of original params
         xk=self._copy_params_out()
-
    
         phi_0=float(closure())
         tol=min(phi_0*0.01,1e-6)
