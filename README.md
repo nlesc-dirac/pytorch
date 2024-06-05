@@ -17,11 +17,9 @@ Files included are:
 
 ``` lbfgsb.py ```: LBFGS-B optimizer (with bound constraints)
 
-``` lbfgs.py ```: Symlink to ``` lbfgsnew.py ```
-
 ``` cifar10_resnet.py ```: CIFAR10 ResNet training example (see figures below)
 
-``` kan_pde.py ```: Kolmogorov Arnold network PDE example
+``` kan_pde.py ```: Kolmogorov Arnold network PDE example using LBFGS-B
 
 <img src="loss.png" alt="ResNet18/101 training loss/time" width="800"/>
 
