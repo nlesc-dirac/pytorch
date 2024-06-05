@@ -290,23 +290,20 @@ class LBFGSB(Optimizer):
 
         line_search_flag=True
         free_vars_index=list()
-        Z=list()
         for i in range(self._n):
             if (xc[i] != self._u[i]) and (xc[i] != self._l[i]):
                 free_vars_index.append(i)
-                unit=torch.zeros(self._n,1,dtype=self._dtype,device=self._device)
-                unit[i,0]=1
-                Z.append(unit)
+
         n_free_vars=len(free_vars_index)
         if n_free_vars==0:
             xbar=xc.clone()
             line_search_flag=False
             return xbar,line_search_flag
 
-        # Z: n x n_free_vars
-        Za=torch.cat(Z,1)
-        
-        WtZ=torch.mm(self._W.transpose(0,1),Za)
+        WtZ=torch.zeros((2*self._m,n_free_vars),dtype=self._dtype,device=self._device)
+        # each column of WtZ (2*m values) = row of i-th free variable in W (2*m values)
+        for i in range(n_free_vars):
+            WtZ[:,i]=self._W[free_vars_index[i],:]
 
         x=torch.cat(self._copy_params_out(),0).detach()
         rr=g+self._theta*(xc-x) - torch.mm(self._W,torch.mm(self._M,c)).squeeze()
