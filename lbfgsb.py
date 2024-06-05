@@ -243,13 +243,13 @@ class LBFGSB(Optimizer):
             c=c+dt*p
             gb=g[b]
             Wbt=self._W[b,:]
-            Wbt=Wbt.unsqueeze(-1)
-            fp=fp+dt*fpp+gb*gb+self._theta*gb*zb-gb*torch.mm(Wbt.transpose(0,1),torch.mm(self._M,c))
-            fpp=fpp-self._theta*gb*gb-2.0*gb*torch.mm(Wbt.transpose(0,1),torch.mm(self._M,p))-gb*gb*torch.mm(Wbt.transpose(0,1),torch.mm(self._M,Wbt))
+            Wbt=Wbt.unsqueeze(-1).transpose(0,1)
+            fp=fp+dt*fpp+gb*gb+self._theta*gb*zb-gb*torch.mm(Wbt,torch.mm(self._M,c))
+            fpp=fpp-self._theta*gb*gb-2.0*gb*torch.mm(Wbt,torch.mm(self._M,p))-gb*gb*torch.mm(Wbt,torch.mm(self._M,Wbt.transpose(0,1)))
             fp=fp.squeeze()
             fpp=fpp.squeeze()
             fpp=max(self._eps*fpp0,fpp)
-            p=p+gb*Wbt
+            p=p+gb*Wbt.transpose(0,1)
             d[b]=0.0
             if (fpp != 0.0):
               dt_min=-fp/fpp
