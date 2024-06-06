@@ -415,7 +415,7 @@ class LBFGSB(Optimizer):
             self._copy_params_in(x0)
             self._add_grad(alpha_i,p)
             f_i=float(closure())
-            if (f_i>f0+c1*dphi0) or ((i>0) and (f_i>f_im1)):
+            if (f_i>f0+c1*dphi0) or ((i>1) and (f_i>f_im1)):
                 alpha=self._alpha_zoom(closure,x0,f0,g0,p,alpha_im1,alpha_i)
                 break
             g_i=self._gather_flat_grad()
