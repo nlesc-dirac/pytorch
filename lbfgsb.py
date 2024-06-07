@@ -123,19 +123,20 @@ class LBFGSB(Optimizer):
 
     #copy the parameter values out, create a list of vectors
     def _copy_params_out(self):
-        return [p.flatten().clone(memory_format=torch.contiguous_format) for p in self._params]
+        return [p.detach().flatten().clone(memory_format=torch.contiguous_format) for p in self._params]
 
     #copy the parameter values back, dividing the list appropriately
     def _copy_params_in(self,new_params):
-        for p, pdata in zip(self._params, new_params):
-            p.data.copy_(pdata.view_as(p).data)
+        with torch.no_grad():
+          for p, pdata in zip(self._params, new_params):
+            p.copy_(pdata.view_as(p))
 
     # restrict parameters to constraints 
     def _fit_to_constraints(self):
         params=[]
         for p in self._params:
             # make a vector
-            p = p.flatten()
+            p = p.detach().flatten()
             params.append(p)
         x=torch.cat(params,0)
         for i in range(x.numel()):
@@ -144,10 +145,11 @@ class LBFGSB(Optimizer):
           elif (x[i]>self._u[i]):
               x[i]=self._u[i]
         offset = 0
-        for p in self._params:
-          numel = p.numel()
-          p.data.copy_(x[offset:offset + numel].view_as(p.data))
-          offset += numel
+        with torch.no_grad():
+          for p in self._params:
+            numel = p.numel()
+            p.copy_(x[offset:offset + numel].view_as(p))
+            offset += numel
         assert offset == self._numel()
 
     def _get_optimality(self,g):
@@ -157,7 +159,7 @@ class LBFGSB(Optimizer):
         # g: nx1 gradient
         # l: nx1 lower bound
         # u: nx1 upper bound
-        x=torch.cat(self._copy_params_out(),0).detach()
+        x=torch.cat(self._copy_params_out(),0)
         projected_g=x-g
         for i in range(x.numel()):
             if projected_g[i]<self._l[i]:
@@ -209,7 +211,7 @@ class LBFGSB(Optimizer):
         # xc: nx1 the generalized Cauchy point
         # c: 2mx1 initialization vector for subspace minimization
 
-        x=torch.cat(self._copy_params_out(),0).detach()
+        x=torch.cat(self._copy_params_out(),0)
         tt,d,F=self._get_breakpoints(x,g)
         xc=x.clone()
         c=torch.zeros(2*self._m,1,dtype=self._dtype,device=self._device)
@@ -224,7 +226,7 @@ class LBFGSB(Optimizer):
         else:
           dt_min=-fp/self._eps
         t_old=0
-
+        # find lowest index i where F[i] is positive (minimum t)
         for j in range(self._n):
             i=j
             if F[i]>=0.0:
@@ -243,13 +245,13 @@ class LBFGSB(Optimizer):
             c=c+dt*p
             gb=g[b]
             Wbt=self._W[b,:]
-            Wbt=Wbt.unsqueeze(-1)
-            fp=fp+dt*fpp+gb*gb+self._theta*gb*zb-gb*torch.mm(Wbt.transpose(0,1),torch.mm(self._M,c))
-            fpp=fpp-self._theta*gb*gb-2.0*gb*torch.mm(Wbt.transpose(0,1),torch.mm(self._M,p))-gb*gb*torch.mm(Wbt.transpose(0,1),torch.mm(self._M,Wbt))
+            Wbt=Wbt.unsqueeze(-1).transpose(0,1)
+            fp=fp+dt*fpp+gb*gb+self._theta*gb*zb-gb*torch.mm(Wbt,torch.mm(self._M,c))
+            fpp=fpp-self._theta*gb*gb-2.0*gb*torch.mm(Wbt,torch.mm(self._M,p))-gb*gb*torch.mm(Wbt,torch.mm(self._M,Wbt.transpose(0,1)))
             fp=fp.squeeze()
             fpp=fpp.squeeze()
             fpp=max(self._eps*fpp0,fpp)
-            p=p+gb*Wbt
+            p=p+gb*Wbt.transpose(0,1)
             d[b]=0.0
             if (fpp != 0.0):
               dt_min=-fp/fpp
@@ -290,25 +292,22 @@ class LBFGSB(Optimizer):
 
         line_search_flag=True
         free_vars_index=list()
-        Z=list()
         for i in range(self._n):
             if (xc[i] != self._u[i]) and (xc[i] != self._l[i]):
                 free_vars_index.append(i)
-                unit=torch.zeros(self._n,1,dtype=self._dtype,device=self._device)
-                unit[i,0]=1
-                Z.append(unit)
+
         n_free_vars=len(free_vars_index)
         if n_free_vars==0:
             xbar=xc.clone()
             line_search_flag=False
             return xbar,line_search_flag
 
-        # Z: n x n_free_vars
-        Za=torch.cat(Z,1)
-        
-        WtZ=torch.mm(self._W.transpose(0,1),Za)
+        WtZ=torch.zeros((2*self._m,n_free_vars),dtype=self._dtype,device=self._device)
+        # each column of WtZ (2*m values) = row of i-th free variable in W (2*m values)
+        for i in range(n_free_vars):
+            WtZ[:,i]=self._W[free_vars_index[i],:]
 
-        x=torch.cat(self._copy_params_out(),0).detach()
+        x=torch.cat(self._copy_params_out(),0)
         rr=g+self._theta*(xc-x) - torch.mm(self._W,torch.mm(self._M,c)).squeeze()
         r=torch.zeros(n_free_vars,1,dtype=self._dtype,device=self._device)
         for i in range(n_free_vars):
@@ -368,7 +367,7 @@ class LBFGSB(Optimizer):
         alphak=alphabar
 
         x0list=self._copy_params_out()
-        xk=[x.detach().clone() for x in x0list]
+        xk=[x.clone() for x in x0list]
         self._add_grad(alphak,pk)
         f_new=float(closure())
         s=gk
@@ -407,7 +406,7 @@ class LBFGSB(Optimizer):
 
         # make a copy of original params
         x0list=self._copy_params_out()
-        x0=[x.detach().clone() for x in x0list]
+        x0=[x.clone() for x in x0list]
 
         i=0
         max_iters=20
@@ -416,10 +415,10 @@ class LBFGSB(Optimizer):
             self._copy_params_in(x0)
             self._add_grad(alpha_i,p)
             f_i=float(closure())
-            g_i=self._gather_flat_grad()
-            if (f_i>f0+c1*dphi0) or ((i>0) and (f_i>f_im1)):
+            if (f_i>f0+c1*dphi0) or ((i>1) and (f_i>f_im1)):
                 alpha=self._alpha_zoom(closure,x0,f0,g0,p,alpha_im1,alpha_i)
                 break
+            g_i=self._gather_flat_grad()
             dphi=torch.dot(g_i,p)
             if (abs(dphi)<=-c2*dphi0):
                 alpha=alpha_i
@@ -524,7 +523,7 @@ class LBFGSB(Optimizer):
         g=self._gather_flat_grad()
         abs_grad_sum = g.abs().sum()
 
-        if abs_grad_sum <= tolerance_grad:
+        if torch.isnan(abs_grad_sum) or abs_grad_sum <= tolerance_grad:
             return orig_loss
 
         n_iter=0
@@ -534,7 +533,7 @@ class LBFGSB(Optimizer):
             self.running_avg_sq=torch.zeros_like(g.data)
 
         while (self._get_optimality(g)>tolerance_change) and  n_iter<max_iter:
-            x_old=torch.cat(self._copy_params_out(),0).detach()
+            x_old=torch.cat(self._copy_params_out(),0)
             g_old=g.clone()
             xc,c=self._get_cauchy_point(g)
             xbar,line_search_flag=self._subspace_min(g,xc,c)
@@ -555,7 +554,7 @@ class LBFGSB(Optimizer):
             f=float(closure())
             g=self._gather_flat_grad()
             y=g-g_old
-            x=torch.cat(self._copy_params_out(),0).detach()
+            x=torch.cat(self._copy_params_out(),0)
             s=x-x_old
             curv=abs(torch.dot(s,y))
             n_iter +=1
