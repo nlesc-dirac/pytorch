@@ -556,7 +556,7 @@ class LBFGSB(Optimizer):
             y=g-g_old
             x=torch.cat(self._copy_params_out(),0)
             s=x-x_old
-            curv=abs(torch.dot(s,y))
+            curv=(torch.dot(s,y))
             n_iter +=1
             state['n_iter'] +=1
 
@@ -564,16 +564,17 @@ class LBFGSB(Optimizer):
             batch_changed=batch_mode and (n_iter==1 and state['n_iter']>1)
             if batch_changed:
                 tmp_grad_1=g_old.clone(memory_format=torch.contiguous_format)
-                tmp_grad_1.add_(self.running_avg,alpha=-1.0)
+                tmp_grad_1.add_(self.running_avg,alpha=-1.0) # grad-oldmean
                 self.running_avg.add_(tmp_grad_1,alpha=1.0/state['n_iter'])
                 tmp_grad_2=g_old.clone(memory_format=torch.contiguous_format)
-                tmp_grad_2.add_(self.running_avg,alpha=-1.0)
-                self.running_avg_sq.addcmul_(tmp_grad_2,tmp_grad_1,value=1)
+                tmp_grad_2.add_(self.running_avg,alpha=-1.0) # grad-newmean
+                self.running_avg_sq.addcmul_(tmp_grad_2,tmp_grad_1,value=1) # # +(grad-newmean)(grad-oldmean)
                 self.alphabar=1.0/(1.0+self.running_avg_sq.sum()/((state['n_iter']-1)*g_old.norm().item()))
 
 
             if (curv<self._eps):
-                print('Warning: negative curvature detected, skipping update')
+                if be_verbose:
+                   print('Warning: negative curvature detected, skipping update')
                 n_iter+=1
                 continue
             # in batch mode, do not update Y and S if the batch has changed
@@ -600,9 +601,6 @@ class LBFGSB(Optimizer):
                 MM[self._m:2*self._m,self._m:2*self._m]=self._theta*torch.mm(self._S.transpose(0,1),self._S)
                 self._M=torch.linalg.pinv(MM) 
 
-
-
-       
 
         if be_verbose and (n_iter==max_iter):
             print('Reached maximum number of iterations,  stopping')
