@@ -4,6 +4,7 @@
 
 from kan import KAN
 from lbfgsb import LBFGSB
+from lbfgsnew import LBFGSNew
 import torch
 import matplotlib.pyplot as plt
 from torch import autograd
@@ -22,7 +23,7 @@ np_i = 21 # number of interior points (along each dimension)
 np_b = 21 # number of boundary points (along each dimension)
 ranges = [-1, 1]
 
-model = KAN(width=[2,2,1], grid=5, k=3, grid_eps=1.0, noise_scale_base=0.25, device=mydevice)
+model = KAN(width=[2,2,1], grid=5, k=3, grid_eps=1.0, device=mydevice)
 
 # get all parameters (all may not be trainable)
 n_params = sum([np.prod(p.size()) for p in model.parameters()])
@@ -70,6 +71,7 @@ log = 1
 def train():
     # try running with batch_mode=True and batch_mode=False (both should work)
     optimizer = LBFGSB(model.parameters(), lower_bound=x_l, upper_bound=x_u, history_size=10,  tolerance_grad=1e-32, tolerance_change=1e-32, batch_mode=True, cost_use_gradient=True)
+    #optimizer = LBFGSNew(model.parameters(), history_size=10,  tolerance_grad=1e-32, tolerance_change=1e-32, batch_mode=True, cost_use_gradient=True)
 
     pbar = tqdm(range(steps), desc='description')
 
