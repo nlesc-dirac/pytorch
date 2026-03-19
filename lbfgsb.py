@@ -369,7 +369,7 @@ class LBFGSB(Optimizer):
         x0list=self._copy_params_out()
         xk=[x.clone() for x in x0list]
         self._add_grad(alphak,pk)
-        f_new=float(closure())
+        f_new=float(closure().detach())
         s=gk
         prodterm=c1*s.dot(pk)
         ci=0
@@ -377,7 +377,7 @@ class LBFGSB(Optimizer):
             alphak=0.5*alphak
             self._copy_params_in(xk)
             self._add_grad(alphak,pk)
-            f_new=float(closure())
+            f_new=float(closure().detach())
             ci=ci+1
 
         self._copy_params_in(xk)
@@ -414,7 +414,7 @@ class LBFGSB(Optimizer):
             # x=x0+alpha_i*p
             self._copy_params_in(x0)
             self._add_grad(alpha_i,p)
-            f_i=float(closure())
+            f_i=float(closure().detach())
             if (f_i>f0+c1*dphi0) or ((i>1) and (f_i>f_im1)):
                 alpha=self._alpha_zoom(closure,x0,f0,g0,p,alpha_im1,alpha_i)
                 break
@@ -462,12 +462,12 @@ class LBFGSB(Optimizer):
             # x=x0+alpha_i*p
             self._copy_params_in(x0)
             self._add_grad(alpha_i,p)
-            f_i=float(closure())
+            f_i=float(closure().detach())
             g_i=self._gather_flat_grad()
             # x_lo=x0+alpha_lo*p
             self._copy_params_in(x0)
             self._add_grad(alpha_lo,p)
-            f_lo=float(closure())
+            f_lo=float(closure().detach())
             if ((f_i>f0+c1*alpha_i*dphi0) or (f_i>=f_lo)):
                 alpha_hi=alpha_i
             else:
@@ -516,7 +516,7 @@ class LBFGSB(Optimizer):
 
         # evaluate initial f(x) and df/dx
         orig_loss = closure()
-        f= float(orig_loss)
+        f= float(orig_loss.detach())
         current_evals = 1
         state['func_evals'] += 1
 
@@ -551,7 +551,7 @@ class LBFGSB(Optimizer):
 
             self._add_grad(alpha,p)
 
-            f=float(closure())
+            f=float(closure().detach())
             g=self._gather_flat_grad()
             y=g-g_old
             x=torch.cat(self._copy_params_out(),0)

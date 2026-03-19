@@ -138,10 +138,10 @@ class LBFGSNew(Optimizer):
         xk=self._copy_params_out()
 
    
-        f_old=float(closure())
+        f_old=float(closure().detach())
         # param = param + alphak * pk
         self._add_grad(alphak, pk)
-        f_new=float(closure())
+        f_new=float(closure().detach())
 
         # prod = c1 * ( alphak ) * gk^T pk = alphak * prodterm
         s=gk
@@ -155,7 +155,7 @@ class LBFGSNew(Optimizer):
            alphak=0.5*alphak
            self._copy_params_in(xk)
            self._add_grad(alphak, pk)
-           f_new=float(closure())
+           f_new=float(closure().detach())
            if be_verbose:
              print('LN %d alpha=%f fnew=%f fold=%f'%(ci,alphak,f_new,f_old))
            ci=ci+1
@@ -165,14 +165,14 @@ class LBFGSNew(Optimizer):
           alphak1=-alphabar
           self._copy_params_in(xk)
           self._add_grad(alphak1, pk)
-          f_new1=float(closure())
+          f_new1=float(closure().detach())
           if be_verbose:
             print('NLN fnew=%f'%f_new1)
           while (ci<citer and (math.isnan(f_new1) or  f_new1 > f_old + alphak1*prodterm)):
              alphak1=0.5*alphak1
              self._copy_params_in(xk)
              self._add_grad(alphak1, pk)
-             f_new1=float(closure())
+             f_new1=float(closure().detach())
              if be_verbose:
                print('NLN %d alpha=%f fnew=%f fold=%f'%(ci,alphak1,f_new1,f_old))
              ci=ci+1
@@ -215,15 +215,15 @@ class LBFGSNew(Optimizer):
         # make a copy of original params
         xk=self._copy_params_out()
    
-        phi_0=float(closure())
+        phi_0=float(closure().detach())
         tol=min(phi_0*0.01,1e-6)
 
         # xp <- xk+step. pk
         self._add_grad(step, pk) #FF param = param + t * grad 
-        p01=float(closure())
+        p01=float(closure().detach())
         # xp <- xk-step. pk
         self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-        p02=float(closure())
+        p02=float(closure().detach())
 
         ##print("p01="+str(p01)+" p02="+str(p02))
         gphi_0=(p01-p02)/(2.0*step)
@@ -251,7 +251,7 @@ class LBFGSNew(Optimizer):
           self._copy_params_in(xk) # original
           # xp <- xk+alphai. pk
           self._add_grad(alphai, pk) #
-          phi_alphai=float(closure())
+          phi_alphai=float(closure().detach())
           if phi_alphai<tol:
              alphak=alphai 
              if be_verbose:
@@ -270,10 +270,10 @@ class LBFGSNew(Optimizer):
           # note that self._params already is xk+alphai. pk, so only add the missing term
           # xp <- xk+(alphai+step). pk
           self._add_grad(step, pk) #FF param = param - t * grad 
-          p01=float(closure())
+          p01=float(closure().detach())
           # xp <- xk+(alphai-step). pk
           self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-          p02=float(closure())
+          p02=float(closure().detach())
           gphi_i=(p01-p02)/(2.0*step);
         
           if (abs(gphi_i)<=-sigma*gphi_0):
@@ -338,24 +338,24 @@ class LBFGSNew(Optimizer):
 
         # xp <- xk+a. pk
         self._add_grad(a, pk) #FF param = param + t * grad 
-        f0=float(closure())
+        f0=float(closure().detach())
         # xp <- xk+(a+step). pk
         self._add_grad(step, pk) #FF param = param + t * grad 
-        p01=float(closure())
+        p01=float(closure().detach())
         # xp <- xk+(a-step). pk
         self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-        p02=float(closure())
+        p02=float(closure().detach())
         f0d=(p01-p02)/(2.0*step)
 
         # xp <- xk+b. pk
         self._add_grad(-a+step+b, pk) #FF param = param + t * grad 
-        f1=float(closure())
+        f1=float(closure().detach())
         # xp <- xk+(b+step). pk
         self._add_grad(step, pk) #FF param = param + t * grad 
-        p01=float(closure())
+        p01=float(closure().detach())
         # xp <- xk+(b-step). pk
         self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-        p02=float(closure())
+        p02=float(closure().detach())
         f1d=(p01-p02)/(2.0*step)
 
         closure_evals=6
@@ -375,7 +375,7 @@ class LBFGSNew(Optimizer):
            else:
              # xp <- xk+(a+z0*(b-a))*pk
              self._add_grad(-b+step+a+z0*(b-a), pk) #FF param = param + t * grad 
-             fz0=float(closure())
+             fz0=float(closure().detach())
              closure_evals +=1
 
            # update state
@@ -443,12 +443,12 @@ class LBFGSNew(Optimizer):
            self._copy_params_in(xk)
            # xp <- xk+alphaj. pk
            self._add_grad(alphaj, pk) #FF param = param + t * grad 
-           phi_j=float(closure())
+           phi_j=float(closure().detach())
           
            # evaluate phi(aj)
            # xp <- xk+aj. pk
            self._add_grad(-alphaj+aj, pk) #FF param = param + t * grad 
-           phi_aj=float(closure())
+           phi_aj=float(closure().detach())
 
            closure_evals +=2
 
@@ -458,10 +458,10 @@ class LBFGSNew(Optimizer):
               # evaluate grad(alphaj)
               # xp <- xk+(alphaj+step). pk
               self._add_grad(-aj+alphaj+step, pk) #FF param = param + t * grad 
-              p01=float(closure())
+              p01=float(closure().detach())
               # xp <- xk+(alphaj-step). pk
               self._add_grad(-2.0*step, pk) #FF param = param + t * grad 
-              p02=float(closure())
+              p02=float(closure().detach())
               gphi_j=(p01-p02)/(2.0*step)
         
 
@@ -526,7 +526,7 @@ class LBFGSNew(Optimizer):
 
         # evaluate initial f(x) and df/dx
         orig_loss = closure()
-        loss = float(orig_loss)
+        loss = float(orig_loss.detach())
         current_evals = 1
         state['func_evals'] += 1
 
@@ -707,7 +707,7 @@ class LBFGSNew(Optimizer):
                     # re-evaluate function only if not in last iteration
                     # the reason we do this: in a stochastic setting,
                     # no use to re-evaluate that function here
-                    loss = float(closure())
+                    loss = float(closure().detach())
                     flat_grad = self._gather_flat_grad()
                     abs_grad_sum = flat_grad.abs().sum()
                     if math.isnan(abs_grad_sum):
