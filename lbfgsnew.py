@@ -4,7 +4,8 @@ from torch.optim.optimizer import Optimizer
 
 import math
 
-be_verbose=False
+be_verbose = False
+
 
 class LBFGSNew(Optimizer):
     """Implements L-BFGS algorithm.
@@ -45,7 +46,7 @@ class LBFGSNew(Optimizer):
 
           optimizer = LBFGSNew(net.parameters(), history_size=7, max_iter=4, line_search_fn=True,batch_mode=True)
           Note: when using a closure(), only do backward() after checking the gradient is available,
-          Eg: 
+          Eg:
             def closure():
              optimizer.zero_grad()
              outputs=net(inputs)
@@ -58,27 +59,47 @@ class LBFGSNew(Optimizer):
 
     """
 
-    def __init__(self, params, lr=1, max_iter=10, max_eval=None,
-                 tolerance_grad=1e-5, tolerance_change=1e-9, history_size=7,
-                 line_search_fn=True, batch_mode=False, cost_use_gradient=False):
+    def __init__(
+        self,
+        params,
+        lr=1,
+        max_iter=10,
+        max_eval=None,
+        tolerance_grad=1e-5,
+        tolerance_change=1e-9,
+        history_size=7,
+        line_search_fn=True,
+        batch_mode=False,
+        cost_use_gradient=False,
+    ):
         if max_eval is None:
             max_eval = max_iter * 5 // 4
-        defaults = dict(lr=lr, max_iter=max_iter, max_eval=max_eval,
-                        tolerance_grad=tolerance_grad, tolerance_change=tolerance_change,
-                        history_size=history_size, line_search_fn=line_search_fn,
-                        batch_mode=batch_mode, cost_use_gradient=cost_use_gradient)
+        defaults = dict(
+            lr=lr,
+            max_iter=max_iter,
+            max_eval=max_eval,
+            tolerance_grad=tolerance_grad,
+            tolerance_change=tolerance_change,
+            history_size=history_size,
+            line_search_fn=line_search_fn,
+            batch_mode=batch_mode,
+            cost_use_gradient=cost_use_gradient,
+        )
         super(LBFGSNew, self).__init__(params, defaults)
 
         if len(self.param_groups) != 1:
-            raise ValueError("LBFGS doesn't support per-parameter options "
-                             "(parameter groups)")
+            raise ValueError(
+                "LBFGS doesn't support per-parameter options (parameter groups)"
+            )
 
-        self._params = self.param_groups[0]['params']
+        self._params = self.param_groups[0]["params"]
         self._numel_cache = None
 
     def _numel(self):
         if self._numel_cache is None:
-            self._numel_cache = reduce(lambda total, p: total + p.numel(), self._params, 0)
+            self._numel_cache = reduce(
+                lambda total, p: total + p.numel(), self._params, 0
+            )
         return self._numel_cache
 
     def _gather_flat_grad(self):
@@ -98,402 +119,415 @@ class LBFGSNew(Optimizer):
         for p in self._params:
             numel = p.numel()
             # view as to avoid deprecated pointwise semantics
-            p.data.add_(update[offset:offset + numel].view_as(p.data), alpha=step_size)
+            p.data.add_(
+                update[offset : offset + numel].view_as(p.data), alpha=step_size
+            )
             offset += numel
         assert offset == self._numel()
 
-    #FF copy the parameter values out, create a single vector
+    # FF copy the parameter values out, create a single vector
     def _copy_params_out(self):
-        return [p.detach().clone(memory_format=torch.contiguous_format) for p in self._params]
+        return [
+            p.detach().clone(memory_format=torch.contiguous_format)
+            for p in self._params
+        ]
 
-    #FF copy the parameter values back, dividing the vector into a list
-    def _copy_params_in(self,new_params):
+    # FF copy the parameter values back, dividing the vector into a list
+    def _copy_params_in(self, new_params):
         with torch.no_grad():
-          for p, pdata in zip(self._params, new_params):
-            p.copy_(pdata)
+            for p, pdata in zip(self._params, new_params):
+                p.copy_(pdata)
 
-    #FF line search xk=self._params, pk=step direction, gk=gradient, alphabar=max. step size
-    def _linesearch_backtrack(self,closure,pk,gk,alphabar):
+    # FF line search xk=self._params, pk=step direction, gk=gradient, alphabar=max. step size
+    def _linesearch_backtrack(self, closure, pk, gk, alphabar):
         """Line search (backtracking)
 
         Arguments:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
             pk: step direction vector
-            gk: gradient vector 
+            gk: gradient vector
             alphabar: max step size
         """
 
-
         # constants (FIXME) find proper values
         # c1: large values better for small batch sizes
-        c1=1e-4
-        citer=35
-        alphak=alphabar# default return step
- 
-        # state parameter 
+        c1 = 1e-4
+        citer = 35
+        alphak = alphabar  # default return step
+
+        # state parameter
         state = self.state[self._params[0]]
 
         # make a copy of original params
-        xk=self._copy_params_out()
+        xk = self._copy_params_out()
 
-   
-        f_old=float(closure().detach())
+        f_old = float(closure().detach())
         # param = param + alphak * pk
         self._add_grad(alphak, pk)
-        f_new=float(closure().detach())
+        f_new = float(closure().detach())
 
         # prod = c1 * ( alphak ) * gk^T pk = alphak * prodterm
-        s=gk
-        prodterm=c1*(s.dot(pk))
+        s = gk
+        prodterm = c1 * (s.dot(pk))
 
-        ci=0
+        ci = 0
         if be_verbose:
-         print('LN %d alpha=%f fnew=%f fold=%f prod=%f'%(ci,alphak,f_new,f_old,prodterm))
+            print(
+                "LN %d alpha=%f fnew=%f fold=%f prod=%f"
+                % (ci, alphak, f_new, f_old, prodterm)
+            )
         # catch cases where f_new is NaN
-        while (ci<citer and (math.isnan(f_new) or  f_new > f_old + alphak*prodterm)):
-           alphak=0.5*alphak
-           self._copy_params_in(xk)
-           self._add_grad(alphak, pk)
-           f_new=float(closure().detach())
-           if be_verbose:
-             print('LN %d alpha=%f fnew=%f fold=%f'%(ci,alphak,f_new,f_old))
-           ci=ci+1
+        while ci < citer and (math.isnan(f_new) or f_new > f_old + alphak * prodterm):
+            alphak = 0.5 * alphak
+            self._copy_params_in(xk)
+            self._add_grad(alphak, pk)
+            f_new = float(closure().detach())
+            if be_verbose:
+                print("LN %d alpha=%f fnew=%f fold=%f" % (ci, alphak, f_new, f_old))
+            ci = ci + 1
 
         # if the cost is not sufficiently decreased, also try -ve steps
-        if (f_old-f_new < torch.abs(prodterm)):
-          alphak1=-alphabar
-          self._copy_params_in(xk)
-          self._add_grad(alphak1, pk)
-          f_new1=float(closure().detach())
-          if be_verbose:
-            print('NLN fnew=%f'%f_new1)
-          while (ci<citer and (math.isnan(f_new1) or  f_new1 > f_old + alphak1*prodterm)):
-             alphak1=0.5*alphak1
-             self._copy_params_in(xk)
-             self._add_grad(alphak1, pk)
-             f_new1=float(closure().detach())
-             if be_verbose:
-               print('NLN %d alpha=%f fnew=%f fold=%f'%(ci,alphak1,f_new1,f_old))
-             ci=ci+1
+        if f_old - f_new < torch.abs(prodterm):
+            alphak1 = -alphabar
+            self._copy_params_in(xk)
+            self._add_grad(alphak1, pk)
+            f_new1 = float(closure().detach())
+            if be_verbose:
+                print("NLN fnew=%f" % f_new1)
+            while ci < citer and (
+                math.isnan(f_new1) or f_new1 > f_old + alphak1 * prodterm
+            ):
+                alphak1 = 0.5 * alphak1
+                self._copy_params_in(xk)
+                self._add_grad(alphak1, pk)
+                f_new1 = float(closure().detach())
+                if be_verbose:
+                    print(
+                        "NLN %d alpha=%f fnew=%f fold=%f" % (ci, alphak1, f_new1, f_old)
+                    )
+                ci = ci + 1
 
-          if f_new1<f_new:
-            # select -ve step
-            alphak=alphak1
+            if f_new1 < f_new:
+                # select -ve step
+                alphak = alphak1
 
         # recover original params
         self._copy_params_in(xk)
         # update state
-        state['func_evals'] += ci
+        state["func_evals"] += ci
         return alphak
 
+    # FF line search xk=self._params, pk=descent direction
+    def _linesearch_cubic(self, closure, pk):
+        """Line search (strong-Wolfe) using automatic differentiation for directional derivatives
 
-
-    #FF line search xk=self._params, pk=gradient
-    def _linesearch_cubic(self,closure,pk,step):
-        """Line search (strong-Wolfe)
+        Instead of finite differences, computes directional derivatives via:
+        gphi(alpha) = grad_f(x + alpha*pk) . pk
+        using automatic differentiation for grad_f.
 
         Arguments:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
-            pk: gradient vector 
-            step: step size for differencing 
+            pk: descent direction vector (typically -gradient)
         """
 
         # constants
-        alpha1=10*self.param_groups[0]['lr']#10.0
-        sigma=0.1
-        rho=0.01
-        t1=9 
-        t2=0.1
-        t3=0.5
-        alphak=self.param_groups[0]['lr']# default return step
- 
-        # state parameter 
+        alpha1 = 10 * self.param_groups[0]["lr"]  # 10.0
+        sigma = 0.1
+        rho = 0.01
+        t1 = 9
+        t2 = 0.1
+        t3 = 0.5
+        alphak = self.param_groups[0]["lr"]  # default return step
+
+        # state parameter
         state = self.state[self._params[0]]
 
         # make a copy of original params
-        xk=self._copy_params_out()
-   
-        phi_0=float(closure().detach())
-        tol=min(phi_0*0.01,1e-6)
+        xk = self._copy_params_out()
 
-        # xp <- xk+step. pk
-        self._add_grad(step, pk) #FF param = param + t * grad 
-        p01=float(closure().detach())
-        # xp <- xk-step. pk
-        self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-        p02=float(closure().detach())
+        # Evaluate initial function value and directional derivative
+        loss_0 = closure()
+        phi_0 = float(loss_0.detach())
 
-        ##print("p01="+str(p01)+" p02="+str(p02))
-        gphi_0=(p01-p02)/(2.0*step)
-        ##print("tol="+str(tol)+" phi_0="+str(phi_0)+" gphi_0="+str(gphi_0))
-        # catch instances when step size is too small 
-        if abs(gphi_0)<1e-12:
-          return 1.0
+        # Compute gradient at x_0 via backprop
+        if loss_0.requires_grad:
+            loss_0.backward()
+        g_0 = self._gather_flat_grad()
+        # Directional derivative: gphi(0) = grad_f(x_0) . pk
+        gphi_0 = g_0.dot(pk).item()
 
-        mu=(tol-phi_0)/(rho*gphi_0)
+        tol = min(phi_0 * 0.01, 1e-6)
+
+        # catch instances when directional derivative is too small
+        if abs(gphi_0) < 1e-12:
+            return 1.0
+
+        mu = (tol - phi_0) / (rho * gphi_0)
         # catch if mu is not finite
         if math.isnan(mu):
-           return 1.0
+            return 1.0
 
         ##print("mu="+str(mu))
-        
-        # counting function evals
-        closure_evals=3
 
-        ci=1
-        alphai=alpha1 # initial value for alpha(i) : check if 0<alphai<=mu 
-        alphai1=0.0
-        phi_alphai1=phi_0
-        while (ci<4) : # FIXME
-          # evalualte phi(alpha(i))=f(xk+alphai pk)
-          self._copy_params_in(xk) # original
-          # xp <- xk+alphai. pk
-          self._add_grad(alphai, pk) #
-          phi_alphai=float(closure().detach())
-          if phi_alphai<tol:
-             alphak=alphai 
-             if be_verbose:
-              print("Linesearch: condition 0 met")
-             break
-          if (phi_alphai>phi_0+alphai*gphi_0) or (ci>1 and phi_alphai>=phi_alphai1) :
-             # ai=alphai1, bi=alphai bracket
-             if be_verbose:
-              print("bracket "+str(alphai1)+","+str(alphai))
-             alphak=self._linesearch_zoom(closure,xk,pk,alphai1,alphai,phi_0,gphi_0,sigma,rho,t1,t2,t3,step)
-             if be_verbose:
-              print("Linesearch: condition 1 met") 
-             break
+        # counting function evals (1 for loss_0 and its gradient)
+        closure_evals = 1
 
-          # evaluate grad(phi(alpha(i))) */
-          # note that self._params already is xk+alphai. pk, so only add the missing term
-          # xp <- xk+(alphai+step). pk
-          self._add_grad(step, pk) #FF param = param - t * grad 
-          p01=float(closure().detach())
-          # xp <- xk+(alphai-step). pk
-          self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-          p02=float(closure().detach())
-          gphi_i=(p01-p02)/(2.0*step);
-        
-          if (abs(gphi_i)<=-sigma*gphi_0):
-             alphak=alphai
-             if be_verbose:
-              print("Linesearch: condition 2 met") 
-             break
+        ci = 1
+        alphai = alpha1  # initial value for alpha(i) : check if 0<alphai<=mu
+        alphai1 = 0.0
+        phi_alphai1 = phi_0
+        while ci < 4:  # FIXME
+            # evaluate phi(alpha(i))=f(xk+alphai pk)
+            self._copy_params_in(xk)  # original
+            # xp <- xk+alphai. pk
+            self._add_grad(alphai, pk)  #
+            loss_alphai = closure()
+            phi_alphai = float(loss_alphai.detach())
+            closure_evals += 1
 
-          if gphi_i>=0.0 :
-             # ai=alphai, bi=alphai1 bracket
-             if be_verbose:
-              print("bracket "+str(alphai)+","+str(alphai1))
-             alphak=self._linesearch_zoom(closure,xk,pk,alphai,alphai1,phi_0,gphi_0,sigma,rho,t1,t2,t3,step)
-             if be_verbose:
-              print("Linesearch: condition 3 met") 
-             break
-          # else preserve old values
-          if (mu<=2.0*alphai-alphai1):
-             alphai1=alphai
-             alphai=mu
-          else:
-             # choose by interpolation in [2*alphai-alphai1,min(mu,alphai+t1*(alphai-alphai1)] 
-            p01=2.0*alphai-alphai1;
-            p02=min(mu,alphai+t1*(alphai-alphai1))
-            alphai=self._cubic_interpolate(closure,xk,pk,p01,p02,step)
+            if phi_alphai < tol:
+                alphak = alphai
+                if be_verbose:
+                    print("Linesearch: condition 0 met")
+                break
+            if (phi_alphai > phi_0 + alphai * gphi_0) or (
+                ci > 1 and phi_alphai >= phi_alphai1
+            ):
+                # ai=alphai1, bi=alphai bracket
+                if be_verbose:
+                    print("bracket " + str(alphai1) + "," + str(alphai))
+                alphak = self._linesearch_zoom(
+                    closure,
+                    xk,
+                    pk,
+                    alphai1,
+                    alphai,
+                    phi_0,
+                    gphi_0,
+                    sigma,
+                    rho,
+                    t1,
+                    t2,
+                    t3,
+                )
+                if be_verbose:
+                    print("Linesearch: condition 1 met")
+                break
 
+            # Compute directional derivative at alpha(i) via backprop
+            if loss_alphai.requires_grad:
+                loss_alphai.backward()
+            g_alphai = self._gather_flat_grad()
+            gphi_i = g_alphai.dot(pk).item()
+            closure_evals += 1
 
-          phi_alphai1=phi_alphai;
-          # update function evals
-          closure_evals +=3
-          ci=ci+1
+            if abs(gphi_i) <= -sigma * gphi_0:
+                alphak = alphai
+                if be_verbose:
+                    print("Linesearch: condition 2 met")
+                break
 
-          
+            if gphi_i >= 0.0:
+                # ai=alphai, bi=alphai1 bracket
+                if be_verbose:
+                    print("bracket " + str(alphai) + "," + str(alphai1))
+                alphak = self._linesearch_zoom(
+                    closure,
+                    xk,
+                    pk,
+                    alphai,
+                    alphai1,
+                    phi_0,
+                    gphi_0,
+                    sigma,
+                    rho,
+                    t1,
+                    t2,
+                    t3,
+                )
+                if be_verbose:
+                    print("Linesearch: condition 3 met")
+                break
+            # else preserve old values
+            if mu <= 2.0 * alphai - alphai1:
+                alphai1 = alphai
+                alphai = mu
+            else:
+                # choose by interpolation in [2*alphai-alphai1,min(mu,alphai+t1*(alphai-alphai1)]
+                p01 = 2.0 * alphai - alphai1
+                p02 = min(mu, alphai + t1 * (alphai - alphai1))
+                alphaj_evals = self._cubic_interpolate(closure, xk, pk, p01, p02)
+                alphai = alphaj_evals[0]
+                closure_evals += alphaj_evals[1]
 
+            phi_alphai1 = phi_alphai
+            ci = ci + 1
 
         # recover original params
         self._copy_params_in(xk)
         # update state
-        state['func_evals'] += closure_evals
+        state["func_evals"] += closure_evals
         return alphak
 
+    def _cubic_interpolate(self, closure, xk, pk, a, b):
+        """Cubic interpolation within interval [a,b] or [b,a] (a>b is possible)
+        Uses automatic differentiation to compute directional derivatives.
 
-    def _cubic_interpolate(self,closure,xk,pk,a,b,step):
-        """ Cubic interpolation within interval [a,b] or [b,a] (a>b is possible)
-          
            Arguments:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
-            xk: copy of parameter values 
-            pk: gradient vector 
+            xk: copy of parameter values
+            pk: descent direction vector
             a/b:  interval for interpolation
-            step: step size for differencing 
-        """
 
+           Returns:
+            (alpha_best, num_evals): best step and number of closure evaluations
+        """
 
         self._copy_params_in(xk)
 
-        # state parameter 
+        # state parameter
         state = self.state[self._params[0]]
         # count function evals
-        closure_evals=0
+        closure_evals = 0
 
-        # xp <- xk+a. pk
-        self._add_grad(a, pk) #FF param = param + t * grad 
-        f0=float(closure().detach())
-        # xp <- xk+(a+step). pk
-        self._add_grad(step, pk) #FF param = param + t * grad 
-        p01=float(closure().detach())
-        # xp <- xk+(a-step). pk
-        self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-        p02=float(closure().detach())
-        f0d=(p01-p02)/(2.0*step)
+        # Evaluate at point a with gradient
+        self._add_grad(a, pk)
+        loss_a = closure()
+        f0 = float(loss_a.detach())
+        if loss_a.requires_grad:
+            loss_a.backward()
+        g_a = self._gather_flat_grad()
+        f0d = g_a.dot(pk).item()  # directional derivative
+        closure_evals += 1
 
-        # xp <- xk+b. pk
-        self._add_grad(-a+step+b, pk) #FF param = param + t * grad 
-        f1=float(closure().detach())
-        # xp <- xk+(b+step). pk
-        self._add_grad(step, pk) #FF param = param + t * grad 
-        p01=float(closure().detach())
-        # xp <- xk+(b-step). pk
-        self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-        p02=float(closure().detach())
-        f1d=(p01-p02)/(2.0*step)
+        # Evaluate at point b with gradient
+        self._copy_params_in(xk)
+        self._add_grad(b, pk)
+        loss_b = closure()
+        f1 = float(loss_b.detach())
+        if loss_b.requires_grad:
+            loss_b.backward()
+        g_b = self._gather_flat_grad()
+        f1d = g_b.dot(pk).item()  # directional derivative
+        closure_evals += 1
 
-        closure_evals=6
+        aa = 3.0 * (f0 - f1) / (b - a) + f1d - f0d
+        p01 = aa * aa - f0d * f1d
+        if p01 > 0.0:
+            cc = math.sqrt(p01)
+            # print('f0d='+str(f0d)+' f1d='+str(f1d)+' cc='+str(cc))
+            if (f1d - f0d + 2.0 * cc) == 0.0:
+                return ((a + b) * 0.5, closure_evals)
+            z0 = b - (f1d + cc - aa) * (b - a) / (f1d - f0d + 2.0 * cc)
+            aa = max(a, b)
+            cc = min(a, b)
+            if z0 > aa or z0 < cc:
+                fz0 = f0 + f1
+            else:
+                # Evaluate at interpolated point z0
+                self._copy_params_in(xk)
+                self._add_grad(z0, pk)
+                fz0 = float(closure().detach())
+                closure_evals += 1
 
-        aa=3.0*(f0-f1)/(b-a)+f1d-f0d
-        p01=aa*aa-f0d*f1d
-        if (p01>0.0):
-           cc=math.sqrt(p01)
-           #print('f0='+str(f0d)+' f1='+str(f1d)+' cc='+str(cc))
-           if (f1d-f0d+2.0*cc)==0.0:
-             return (a+b)*0.5
-           z0=b-(f1d+cc-aa)*(b-a)/(f1d-f0d+2.0*cc)
-           aa=max(a,b)
-           cc=min(a,b)
-           if z0>aa or z0<cc:
-             fz0=f0+f1
-           else:
-             # xp <- xk+(a+z0*(b-a))*pk
-             self._add_grad(-b+step+a+z0*(b-a), pk) #FF param = param + t * grad 
-             fz0=float(closure().detach())
-             closure_evals +=1
+            if f0 < f1 and f0 < fz0:
+                return (a, closure_evals)
 
-           # update state
-           state['func_evals'] += closure_evals
-
-           if f0<f1 and f0<fz0:
-             return a
-
-           if f1<fz0:
-             return b
-           # else
-           return z0
+            if f1 < fz0:
+                return (b, closure_evals)
+            # else
+            return (z0, closure_evals)
         else:
+            if f0 < f1:
+                return (a, closure_evals)
+            else:
+                return (b, closure_evals)
 
-           # update state
-           state['func_evals'] += closure_evals
-
-           if f0<f1:
-             return a
-           else:
-             return b
-
-        # update state
-        state['func_evals'] += closure_evals
-
-        # fallback value
-        return (a+b)*0.5
-     
-
-
-
-    #FF bracket [a,b]
-    # xk: copy of parameters, use it to refresh self._param 
-    def _linesearch_zoom(self,closure,xk,pk,a,b,phi_0,gphi_0,sigma,rho,t1,t2,t3,step):
-        """Zoom step in line search
+    # FF bracket [a,b]
+    # xk: copy of parameters, use it to refresh self._param
+    def _linesearch_zoom(
+        self, closure, xk, pk, a, b, phi_0, gphi_0, sigma, rho, t1, t2, t3
+    ):
+        """Zoom step in line search using automatic differentiation for directional derivatives
 
         Arguments:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
-            xk: copy of parameter values 
-            pk: gradient vector 
-            a/b:  bracket interval for line search, 
-            phi_0: phi(0)
-            gphi_0: grad(phi(0))
-            sigma,rho,t1,t2,t3: line search parameters (from Fletcher) 
-            step: step size for differencing 
+            xk: copy of parameter values
+            pk: descent direction vector
+            a/b:  bracket interval for line search,
+            phi_0: phi(0) initial function value
+            gphi_0: initial directional derivative (grad_f(x_0) . pk)
+            sigma,rho,t1,t2,t3: line search parameters (from Fletcher)
         """
 
-        # state parameter 
+        # state parameter
         state = self.state[self._params[0]]
         # count function evals
-        closure_evals=0
+        closure_evals = 0
 
-        aj=a
-        bj=b
-        ci=0
-        found_step=False
-        while ci<4: # FIXME original 10
-           # choose alphaj from [a+t2(b-a),b-t3(b-a)]
-           p01=aj+t2*(bj-aj)
-           p02=bj-t3*(bj-aj)
-           alphaj=self._cubic_interpolate(closure,xk,pk,p01,p02,step)
+        aj = a
+        bj = b
+        ci = 0
+        found_step = False
+        while ci < 4:  # FIXME original 10
+            # choose alphaj from [a+t2(b-a),b-t3(b-a)]
+            p01 = aj + t2 * (bj - aj)
+            p02 = bj - t3 * (bj - aj)
+            alphaj, interp_evals = self._cubic_interpolate(closure, xk, pk, p01, p02)
+            closure_evals += interp_evals
 
-           # evaluate phi(alphaj)
-           self._copy_params_in(xk)
-           # xp <- xk+alphaj. pk
-           self._add_grad(alphaj, pk) #FF param = param + t * grad 
-           phi_j=float(closure().detach())
-          
-           # evaluate phi(aj)
-           # xp <- xk+aj. pk
-           self._add_grad(-alphaj+aj, pk) #FF param = param + t * grad 
-           phi_aj=float(closure().detach())
+            # evaluate phi(alphaj)
+            self._copy_params_in(xk)
+            # xp <- xk+alphaj. pk
+            self._add_grad(alphaj, pk)
+            loss_j = closure()
+            phi_j = float(loss_j.detach())
+            closure_evals += 1
 
-           closure_evals +=2
+            # evaluate phi(aj)
+            # xp <- xk+aj. pk
+            self._add_grad(-alphaj + aj, pk)
+            phi_aj = float(closure().detach())
+            closure_evals += 1
 
-           if (phi_j>phi_0+rho*alphaj*gphi_0) or phi_j>=phi_aj :
-              bj=alphaj # aj is unchanged
-           else:
-              # evaluate grad(alphaj)
-              # xp <- xk+(alphaj+step). pk
-              self._add_grad(-aj+alphaj+step, pk) #FF param = param + t * grad 
-              p01=float(closure().detach())
-              # xp <- xk+(alphaj-step). pk
-              self._add_grad(-2.0*step, pk) #FF param = param + t * grad 
-              p02=float(closure().detach())
-              gphi_j=(p01-p02)/(2.0*step)
-        
+            if (phi_j > phi_0 + rho * alphaj * gphi_0) or phi_j >= phi_aj:
+                bj = alphaj  # aj is unchanged
+            else:
+                # Compute directional derivative at alphaj via backprop
+                if loss_j.requires_grad:
+                    loss_j.backward()
+                g_j = self._gather_flat_grad()
+                gphi_j = g_j.dot(pk).item()
 
-              closure_evals +=2
+                # termination due to roundoff/other errors pp. 38, Fletcher
+                if (aj - alphaj) * gphi_j <= 1e-6:
+                    alphak = alphaj
+                    found_step = True
+                    break
 
-              # termination due to roundoff/other errors pp. 38, Fletcher
-              if (aj-alphaj)*gphi_j <= step:
-                 alphak=alphaj
-                 found_step=True
-                 break
-             
-              if abs(gphi_j)<=-sigma*gphi_0 :
-                 alphak=alphaj
-                 found_step=True
-                 break
+                if abs(gphi_j) <= -sigma * gphi_0:
+                    alphak = alphaj
+                    found_step = True
+                    break
 
-              if gphi_j*(bj-aj)>=0.0:
-                 bj=aj
-              # else bj is unchanged
-              aj=alphaj
+                if gphi_j * (bj - aj) >= 0.0:
+                    bj = aj
+                # else bj is unchanged
+                aj = alphaj
 
+            ci = ci + 1
 
-           ci=ci+1
-        
         if not found_step:
-          alphak=alphaj
+            alphak = alphaj
 
         # update state
-        state['func_evals'] += closure_evals
+        state["func_evals"] += closure_evals
 
         return alphak
-
 
     def step(self, closure):
         """Performs a single optimization step.
@@ -505,30 +539,28 @@ class LBFGSNew(Optimizer):
         assert len(self.param_groups) == 1
 
         group = self.param_groups[0]
-        lr = group['lr']
-        max_iter = group['max_iter']
-        max_eval = group['max_eval']
-        tolerance_grad = group['tolerance_grad']
-        tolerance_change = group['tolerance_change']
-        line_search_fn = group['line_search_fn']
-        history_size = group['history_size']
+        lr = group["lr"]
+        max_iter = group["max_iter"]
+        max_eval = group["max_eval"]
+        tolerance_grad = group["tolerance_grad"]
+        tolerance_change = group["tolerance_change"]
+        line_search_fn = group["line_search_fn"]
+        history_size = group["history_size"]
 
-        batch_mode = group['batch_mode']
-        cost_use_gradient = group['cost_use_gradient']
-
+        batch_mode = group["batch_mode"]
+        cost_use_gradient = group["cost_use_gradient"]
 
         # NOTE: LBFGS has only global state, but we register it as state for
         # the first param, because this helps with casting in load_state_dict
         state = self.state[self._params[0]]
-        state.setdefault('func_evals', 0)
-        state.setdefault('n_iter', 0)
-
+        state.setdefault("func_evals", 0)
+        state.setdefault("n_iter", 0)
 
         # evaluate initial f(x) and df/dx
         orig_loss = closure()
         loss = float(orig_loss.detach())
         current_evals = 1
-        state['func_evals'] += 1
+        state["func_evals"] += 1
 
         flat_grad = self._gather_flat_grad()
         abs_grad_sum = flat_grad.abs().sum()
@@ -537,77 +569,91 @@ class LBFGSNew(Optimizer):
             return orig_loss
 
         # tensors cached in state (for tracing)
-        d = state.get('d')
-        t = state.get('t')
-        old_dirs = state.get('old_dirs')
-        old_stps = state.get('old_stps')
-        H_diag = state.get('H_diag')
-        prev_flat_grad = state.get('prev_flat_grad')
-        prev_loss = state.get('prev_loss')
+        d = state.get("d")
+        t = state.get("t")
+        old_dirs = state.get("old_dirs")
+        old_stps = state.get("old_stps")
+        H_diag = state.get("H_diag")
+        prev_flat_grad = state.get("prev_flat_grad")
+        prev_loss = state.get("prev_loss")
 
         n_iter = 0
 
         if batch_mode:
-          alphabar=lr
-          lm0=1e-6
+            alphabar = lr
+            lm0 = 1e-6
 
         # optimize for a max of max_iter iterations
-        grad_nrm=flat_grad.norm().item()
+        grad_nrm = flat_grad.norm().item()
         while n_iter < max_iter and not math.isnan(grad_nrm):
             # keep track of nb of iterations
             n_iter += 1
-            state['n_iter'] += 1
+            state["n_iter"] += 1
 
             ############################################################
             # compute gradient descent direction
             ############################################################
-            if state['n_iter'] == 1:
+            if state["n_iter"] == 1:
                 d = flat_grad.neg()
                 old_dirs = []
                 old_stps = []
                 H_diag = 1
                 if batch_mode:
-                 running_avg=torch.zeros_like(flat_grad.data)
-                 running_avg_sq=torch.zeros_like(flat_grad.data)
+                    running_avg = torch.zeros_like(flat_grad.data)
+                    running_avg_sq = torch.zeros_like(flat_grad.data)
             else:
                 if batch_mode:
-                 running_avg=state.get('running_avg')
-                 running_avg_sq=state.get('running_avg_sq')
-                 if running_avg is None:
-                  running_avg=torch.zeros_like(flat_grad.data)
-                  running_avg_sq=torch.zeros_like(flat_grad.data)
+                    running_avg = state.get("running_avg")
+                    running_avg_sq = state.get("running_avg_sq")
+                    if running_avg is None:
+                        running_avg = torch.zeros_like(flat_grad.data)
+                        running_avg_sq = torch.zeros_like(flat_grad.data)
 
-                # do lbfgs update (update memory) 
+                # do lbfgs update (update memory)
                 # what happens if current and prev grad are equal, ||y||->0 ??
                 y = flat_grad.sub(prev_flat_grad)
 
                 s = d.mul(t)
 
-                if batch_mode: # y = y+ lm0 * s, to have a trust region
-                  y.add_(s,alpha=lm0)
+                if batch_mode:  # y = y+ lm0 * s, to have a trust region
+                    y.add_(s, alpha=lm0)
 
                 ys = y.dot(s)  # y^T*s
                 sn = s.norm().item()  # ||s||
                 # FIXME batch_changed does not work for full batch mode (data might be the same)
-                batch_changed= batch_mode and (n_iter==1 and state['n_iter']>1)
-                if batch_changed: # batch has changed
-                   # online estimate of mean,variance of gradient (inter-batch, not intra-batch)
-                   # newmean <- oldmean + (grad - oldmean)/niter
-                   # moment <- oldmoment + (grad-oldmean)(grad-newmean)
-                   # variance = moment/(niter-1)
+                batch_changed = batch_mode and (n_iter == 1 and state["n_iter"] > 1)
+                if batch_changed:  # batch has changed
+                    # online estimate of mean,variance of gradient (inter-batch, not intra-batch)
+                    # newmean <- oldmean + (grad - oldmean)/niter
+                    # moment <- oldmoment + (grad-oldmean)(grad-newmean)
+                    # variance = moment/(niter-1)
 
-                   g_old=flat_grad.clone(memory_format=torch.contiguous_format)
-                   g_old.add_(running_avg,alpha=-1.0) # grad-oldmean
-                   running_avg.add_(g_old,alpha=1.0/state['n_iter']) # newmean
-                   g_new=flat_grad.clone(memory_format=torch.contiguous_format)
-                   g_new.add_(running_avg,alpha=-1.0) # grad-newmean
-                   running_avg_sq.addcmul_(g_new,g_old,value=1) # +(grad-newmean)(grad-oldmean)
-                   alphabar=1/(1+running_avg_sq.sum()/((state['n_iter']-1)*(grad_nrm)))
-                   if be_verbose:
-                     print('iter %d |mean| %f |var| %f ||grad|| %f step %f y^Ts %f alphabar=%f'%(state['n_iter'],running_avg.sum(),running_avg_sq.sum()/(state['n_iter']-1),grad_nrm,t,ys,alphabar))
+                    g_old = flat_grad.clone(memory_format=torch.contiguous_format)
+                    g_old.add_(running_avg, alpha=-1.0)  # grad-oldmean
+                    running_avg.add_(g_old, alpha=1.0 / state["n_iter"])  # newmean
+                    g_new = flat_grad.clone(memory_format=torch.contiguous_format)
+                    g_new.add_(running_avg, alpha=-1.0)  # grad-newmean
+                    running_avg_sq.addcmul_(
+                        g_new, g_old, value=1
+                    )  # +(grad-newmean)(grad-oldmean)
+                    alphabar = 1 / (
+                        1 + running_avg_sq.sum() / ((state["n_iter"] - 1) * (grad_nrm))
+                    )
+                    if be_verbose:
+                        print(
+                            "iter %d |mean| %f |var| %f ||grad|| %f step %f y^Ts %f alphabar=%f"
+                            % (
+                                state["n_iter"],
+                                running_avg.sum(),
+                                running_avg_sq.sum() / (state["n_iter"] - 1),
+                                grad_nrm,
+                                t,
+                                ys,
+                                alphabar,
+                            )
+                        )
 
-
-                if ys > 1e-10*sn*sn and not batch_changed :
+                if ys > 1e-10 * sn * sn and not batch_changed:
                     # updating memory (only when we have y within a single batch)
                     if len(old_dirs) == history_size:
                         # shift history by one (limited-memory)
@@ -622,33 +668,33 @@ class LBFGSNew(Optimizer):
                     H_diag = ys / y.dot(y)  # (y*y)
 
                 if math.isnan(H_diag):
-                  print('Warning H_diag nan')
+                    print("Warning H_diag nan")
 
                 # compute the approximate (L-BFGS) inverse Hessian
                 # multiplied by the gradient
                 num_old = len(old_dirs)
 
-                if 'ro' not in state:
-                    state['ro'] = [None] * history_size
-                    state['al'] = [None] * history_size
-                ro = state['ro']
-                al = state['al']
+                if "ro" not in state:
+                    state["ro"] = [None] * history_size
+                    state["al"] = [None] * history_size
+                ro = state["ro"]
+                al = state["al"]
 
                 for i in range(num_old):
-                    ro[i] = 1. / old_dirs[i].dot(old_stps[i])
+                    ro[i] = 1.0 / old_dirs[i].dot(old_stps[i])
 
                 # iteration in L-BFGS loop collapsed to use just one buffer
                 q = flat_grad.neg()
                 for i in range(num_old - 1, -1, -1):
                     al[i] = old_stps[i].dot(q) * ro[i]
-                    q.add_(old_dirs[i],alpha=-al[i])
+                    q.add_(old_dirs[i], alpha=-al[i])
 
                 # multiply by initial Hessian
                 # r/d is the final direction
                 d = r = torch.mul(q, H_diag)
                 for i in range(num_old):
                     be_i = old_dirs[i].dot(r) * ro[i]
-                    r.add_(old_stps[i],alpha=al[i] - be_i)
+                    r.add_(old_stps[i], alpha=al[i] - be_i)
 
             if prev_flat_grad is None:
                 prev_flat_grad = flat_grad.clone(memory_format=torch.contiguous_format)
@@ -662,8 +708,8 @@ class LBFGSNew(Optimizer):
             # compute step length
             ############################################################
             # reset initial guess for step size
-            if state['n_iter'] == 1:
-                t = min(1., 1. / abs_grad_sum) * lr
+            if state["n_iter"] == 1:
+                t = min(1.0, 1.0 / abs_grad_sum) * lr
             else:
                 t = lr
 
@@ -671,53 +717,53 @@ class LBFGSNew(Optimizer):
             gtd = flat_grad.dot(d)  # g * d
 
             if math.isnan(gtd.item()):
-              print('Warning grad norm infinite')
-              print('iter %d'%state['n_iter'])
-              print('||grad||=%f'%grad_nrm)
-              print('||d||=%f'%d.norm().item())
+                print("Warning grad norm infinite")
+                print("iter %d" % state["n_iter"])
+                print("||grad||=%f" % grad_nrm)
+                print("||d||=%f" % d.norm().item())
             # optional line search: user function
             ls_func_evals = 0
             if line_search_fn:
                 # perform line search, using user function
                 ##raise RuntimeError("line search function is not supported yet")
-                #FF#################################
+                # FF#################################
                 # Note: we disable gradient calculation during line search
                 # because it is not needed
                 if not cost_use_gradient:
-                 torch.set_grad_enabled(False)
+                    torch.set_grad_enabled(False)
                 if not batch_mode:
-                 t=self._linesearch_cubic(closure,d,1e-6) 
+                    t = self._linesearch_cubic(closure, d)
                 else:
-                 t=self._linesearch_backtrack(closure,d,flat_grad,alphabar)
+                    t = self._linesearch_backtrack(closure, d, flat_grad, alphabar)
                 if not cost_use_gradient:
-                 torch.set_grad_enabled(True)
+                    torch.set_grad_enabled(True)
 
                 if math.isnan(t):
-                  print('Warning: stepsize nan')
-                  t=lr
-                self._add_grad(t, d) #FF param = param + t * d 
+                    print("Warning: stepsize nan")
+                    t = lr
+                self._add_grad(t, d)  # FF param = param + t * d
                 if be_verbose:
-                 print('step size=%f'%(t))
-                #FF#################################
+                    print("step size=%f" % (t))
+                # FF#################################
             else:
-                #FF Here, t = stepsize,  d = -grad, in cache
+                # FF Here, t = stepsize,  d = -grad, in cache
                 # no line search, simply move with fixed-step
-                self._add_grad(t, d) #FF param = param + t * d 
+                self._add_grad(t, d)  # FF param = param + t * d
             if n_iter != max_iter:
-                    # re-evaluate function only if not in last iteration
-                    # the reason we do this: in a stochastic setting,
-                    # no use to re-evaluate that function here
-                    loss = float(closure().detach())
-                    flat_grad = self._gather_flat_grad()
-                    abs_grad_sum = flat_grad.abs().sum()
-                    if math.isnan(abs_grad_sum):
-                       print('Warning: gradient nan')
-                       break
-                    ls_func_evals = 1
+                # re-evaluate function only if not in last iteration
+                # the reason we do this: in a stochastic setting,
+                # no use to re-evaluate that function here
+                loss = float(closure().detach())
+                flat_grad = self._gather_flat_grad()
+                abs_grad_sum = flat_grad.abs().sum()
+                if math.isnan(abs_grad_sum):
+                    print("Warning: gradient nan")
+                    break
+                ls_func_evals = 1
 
             # update func eval
             current_evals += ls_func_evals
-            state['func_evals'] += ls_func_evals
+            state["func_evals"] += ls_func_evals
 
             ############################################################
             # check conditions
@@ -740,20 +786,19 @@ class LBFGSNew(Optimizer):
             if abs(loss - prev_loss) < tolerance_change:
                 break
 
-        state['d'] = d
-        state['t'] = t
-        state['old_dirs'] = old_dirs
-        state['old_stps'] = old_stps
-        state['H_diag'] = H_diag
-        state['prev_flat_grad'] = prev_flat_grad
-        state['prev_loss'] = prev_loss
+        state["d"] = d
+        state["t"] = t
+        state["old_dirs"] = old_dirs
+        state["old_stps"] = old_stps
+        state["H_diag"] = H_diag
+        state["prev_flat_grad"] = prev_flat_grad
+        state["prev_loss"] = prev_loss
 
         if batch_mode:
-         if 'running_avg' not in locals() or running_avg is None:
-           running_avg=torch.zeros_like(flat_grad.data)
-           running_avg_sq=torch.zeros_like(flat_grad.data)
-         state['running_avg']=running_avg
-         state['running_avg_sq']=running_avg_sq
-   
+            if "running_avg" not in locals() or running_avg is None:
+                running_avg = torch.zeros_like(flat_grad.data)
+                running_avg_sq = torch.zeros_like(flat_grad.data)
+            state["running_avg"] = running_avg
+            state["running_avg_sq"] = running_avg_sq
 
         return orig_loss
