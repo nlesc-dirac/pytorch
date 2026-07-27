@@ -130,14 +130,14 @@ class LBFGSNew(Optimizer):
         c1=1e-4
         citer=35
         alphak=alphabar# default return step
- 
-        # state parameter 
+  
+         # state parameter 
         state = self.state[self._params[0]]
 
         # make a copy of original params
         xk=self._copy_params_out()
 
-   
+    
         f_old=float(closure().detach())
         # param = param + alphak * pk
         self._add_grad(alphak, pk)
@@ -189,15 +189,18 @@ class LBFGSNew(Optimizer):
 
 
 
-    #FF line search xk=self._params, pk=gradient
-    def _linesearch_cubic(self,closure,pk,step):
-        """Line search (strong-Wolfe)
+    #FF line search xk=self._params, pk=descent direction
+    def _linesearch_cubic(self,closure,pk):
+        """Line search (strong-Wolfe) using automatic differentiation for directional derivatives
+        
+        Instead of finite differences, computes directional derivatives via:
+        gphi(alpha) = grad_f(x + alpha*pk) . pk
+        using automatic differentiation for grad_f.
 
         Arguments:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
-            pk: gradient vector 
-            step: step size for differencing 
+            pk: descent direction vector (typically -gradient)
         """
 
         # constants
@@ -208,27 +211,27 @@ class LBFGSNew(Optimizer):
         t2=0.1
         t3=0.5
         alphak=self.param_groups[0]['lr']# default return step
- 
+  
         # state parameter 
         state = self.state[self._params[0]]
 
         # make a copy of original params
         xk=self._copy_params_out()
-   
-        phi_0=float(closure().detach())
+    
+        # Evaluate initial function value and directional derivative
+        loss_0 = closure()
+        phi_0 = float(loss_0.detach())
+        
+        # Compute gradient at x_0 via backprop
+        if loss_0.requires_grad:
+            loss_0.backward()
+        g_0 = self._gather_flat_grad()
+        # Directional derivative: gphi(0) = grad_f(x_0) . pk
+        gphi_0 = g_0.dot(pk).item()
+        
         tol=min(phi_0*0.01,1e-6)
-
-        # xp <- xk+step. pk
-        self._add_grad(step, pk) #FF param = param + t * grad 
-        p01=float(closure().detach())
-        # xp <- xk-step. pk
-        self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-        p02=float(closure().detach())
-
-        ##print("p01="+str(p01)+" p02="+str(p02))
-        gphi_0=(p01-p02)/(2.0*step)
-        ##print("tol="+str(tol)+" phi_0="+str(phi_0)+" gphi_0="+str(gphi_0))
-        # catch instances when step size is too small 
+        
+        # catch instances when directional derivative is too small 
         if abs(gphi_0)<1e-12:
           return 1.0
 
@@ -239,19 +242,22 @@ class LBFGSNew(Optimizer):
 
         ##print("mu="+str(mu))
         
-        # counting function evals
-        closure_evals=3
+        # counting function evals (1 for loss_0 and its gradient)
+        closure_evals=1
 
         ci=1
         alphai=alpha1 # initial value for alpha(i) : check if 0<alphai<=mu 
         alphai1=0.0
         phi_alphai1=phi_0
         while (ci<4) : # FIXME
-          # evalualte phi(alpha(i))=f(xk+alphai pk)
+          # evaluate phi(alpha(i))=f(xk+alphai pk)
           self._copy_params_in(xk) # original
           # xp <- xk+alphai. pk
           self._add_grad(alphai, pk) #
-          phi_alphai=float(closure().detach())
+          loss_alphai = closure()
+          phi_alphai = float(loss_alphai.detach())
+          closure_evals += 1
+          
           if phi_alphai<tol:
              alphak=alphai 
              if be_verbose:
@@ -261,20 +267,17 @@ class LBFGSNew(Optimizer):
              # ai=alphai1, bi=alphai bracket
              if be_verbose:
               print("bracket "+str(alphai1)+","+str(alphai))
-             alphak=self._linesearch_zoom(closure,xk,pk,alphai1,alphai,phi_0,gphi_0,sigma,rho,t1,t2,t3,step)
+             alphak=self._linesearch_zoom(closure,xk,pk,alphai1,alphai,phi_0,gphi_0,sigma,rho,t1,t2,t3)
              if be_verbose:
               print("Linesearch: condition 1 met") 
              break
 
-          # evaluate grad(phi(alpha(i))) */
-          # note that self._params already is xk+alphai. pk, so only add the missing term
-          # xp <- xk+(alphai+step). pk
-          self._add_grad(step, pk) #FF param = param - t * grad 
-          p01=float(closure().detach())
-          # xp <- xk+(alphai-step). pk
-          self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-          p02=float(closure().detach())
-          gphi_i=(p01-p02)/(2.0*step);
+          # Compute directional derivative at alpha(i) via backprop
+          if loss_alphai.requires_grad:
+              loss_alphai.backward()
+          g_alphai = self._gather_flat_grad()
+          gphi_i = g_alphai.dot(pk).item()
+          closure_evals += 1
         
           if (abs(gphi_i)<=-sigma*gphi_0):
              alphak=alphai
@@ -286,7 +289,7 @@ class LBFGSNew(Optimizer):
              # ai=alphai, bi=alphai1 bracket
              if be_verbose:
               print("bracket "+str(alphai)+","+str(alphai1))
-             alphak=self._linesearch_zoom(closure,xk,pk,alphai,alphai1,phi_0,gphi_0,sigma,rho,t1,t2,t3,step)
+             alphak=self._linesearch_zoom(closure,xk,pk,alphai,alphai1,phi_0,gphi_0,sigma,rho,t1,t2,t3)
              if be_verbose:
               print("Linesearch: condition 3 met") 
              break
@@ -296,17 +299,16 @@ class LBFGSNew(Optimizer):
              alphai=mu
           else:
              # choose by interpolation in [2*alphai-alphai1,min(mu,alphai+t1*(alphai-alphai1)] 
-            p01=2.0*alphai-alphai1;
-            p02=min(mu,alphai+t1*(alphai-alphai1))
-            alphai=self._cubic_interpolate(closure,xk,pk,p01,p02,step)
+             p01=2.0*alphai-alphai1;
+             p02=min(mu,alphai+t1*(alphai-alphai1))
+             alphaj_evals = self._cubic_interpolate(closure,xk,pk,p01,p02)
+             alphai = alphaj_evals[0]
+             closure_evals += alphaj_evals[1]
 
 
           phi_alphai1=phi_alphai;
-          # update function evals
-          closure_evals +=3
           ci=ci+1
 
-          
 
 
         # recover original params
@@ -316,16 +318,19 @@ class LBFGSNew(Optimizer):
         return alphak
 
 
-    def _cubic_interpolate(self,closure,xk,pk,a,b,step):
+    def _cubic_interpolate(self,closure,xk,pk,a,b):
         """ Cubic interpolation within interval [a,b] or [b,a] (a>b is possible)
+        Uses automatic differentiation to compute directional derivatives.
           
            Arguments:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
             xk: copy of parameter values 
-            pk: gradient vector 
+            pk: descent direction vector 
             a/b:  interval for interpolation
-            step: step size for differencing 
+           
+           Returns:
+            (alpha_best, num_evals): best step and number of closure evaluations
         """
 
 
@@ -336,92 +341,76 @@ class LBFGSNew(Optimizer):
         # count function evals
         closure_evals=0
 
-        # xp <- xk+a. pk
-        self._add_grad(a, pk) #FF param = param + t * grad 
-        f0=float(closure().detach())
-        # xp <- xk+(a+step). pk
-        self._add_grad(step, pk) #FF param = param + t * grad 
-        p01=float(closure().detach())
-        # xp <- xk+(a-step). pk
-        self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-        p02=float(closure().detach())
-        f0d=(p01-p02)/(2.0*step)
+        # Evaluate at point a with gradient
+        self._add_grad(a, pk)
+        loss_a = closure()
+        f0 = float(loss_a.detach())
+        if loss_a.requires_grad:
+            loss_a.backward()
+        g_a = self._gather_flat_grad()
+        f0d = g_a.dot(pk).item()  # directional derivative
+        closure_evals += 1
 
-        # xp <- xk+b. pk
-        self._add_grad(-a+step+b, pk) #FF param = param + t * grad 
-        f1=float(closure().detach())
-        # xp <- xk+(b+step). pk
-        self._add_grad(step, pk) #FF param = param + t * grad 
-        p01=float(closure().detach())
-        # xp <- xk+(b-step). pk
-        self._add_grad(-2.0*step, pk) #FF param = param - t * grad 
-        p02=float(closure().detach())
-        f1d=(p01-p02)/(2.0*step)
-
-        closure_evals=6
+        # Evaluate at point b with gradient
+        self._copy_params_in(xk)
+        self._add_grad(b, pk)
+        loss_b = closure()
+        f1 = float(loss_b.detach())
+        if loss_b.requires_grad:
+            loss_b.backward()
+        g_b = self._gather_flat_grad()
+        f1d = g_b.dot(pk).item()  # directional derivative
+        closure_evals += 1
 
         aa=3.0*(f0-f1)/(b-a)+f1d-f0d
         p01=aa*aa-f0d*f1d
         if (p01>0.0):
            cc=math.sqrt(p01)
-           #print('f0='+str(f0d)+' f1='+str(f1d)+' cc='+str(cc))
+           #print('f0d='+str(f0d)+' f1d='+str(f1d)+' cc='+str(cc))
            if (f1d-f0d+2.0*cc)==0.0:
-             return (a+b)*0.5
+             return ((a+b)*0.5, closure_evals)
            z0=b-(f1d+cc-aa)*(b-a)/(f1d-f0d+2.0*cc)
            aa=max(a,b)
            cc=min(a,b)
            if z0>aa or z0<cc:
              fz0=f0+f1
            else:
-             # xp <- xk+(a+z0*(b-a))*pk
-             self._add_grad(-b+step+a+z0*(b-a), pk) #FF param = param + t * grad 
+             # Evaluate at interpolated point z0
+             self._copy_params_in(xk)
+             self._add_grad(z0, pk)
              fz0=float(closure().detach())
              closure_evals +=1
 
-           # update state
-           state['func_evals'] += closure_evals
-
            if f0<f1 and f0<fz0:
-             return a
+             return (a, closure_evals)
 
            if f1<fz0:
-             return b
+             return (b, closure_evals)
            # else
-           return z0
+           return (z0, closure_evals)
         else:
-
-           # update state
-           state['func_evals'] += closure_evals
-
            if f0<f1:
-             return a
+             return (a, closure_evals)
            else:
-             return b
+             return (b, closure_evals)
 
-        # update state
-        state['func_evals'] += closure_evals
-
-        # fallback value
-        return (a+b)*0.5
-     
-
+      
 
 
     #FF bracket [a,b]
     # xk: copy of parameters, use it to refresh self._param 
-    def _linesearch_zoom(self,closure,xk,pk,a,b,phi_0,gphi_0,sigma,rho,t1,t2,t3,step):
-        """Zoom step in line search
+    def _linesearch_zoom(self,closure,xk,pk,a,b,phi_0,gphi_0,sigma,rho,t1,t2,t3):
+        """Zoom step in line search using automatic differentiation for directional derivatives
 
         Arguments:
             closure (callable): A closure that reevaluates the model
                 and returns the loss.
             xk: copy of parameter values 
-            pk: gradient vector 
+            pk: descent direction vector 
             a/b:  bracket interval for line search, 
-            phi_0: phi(0)
-            gphi_0: grad(phi(0))
-            sigma,rho,t1,t2,t3: line search parameters (from Fletcher) 
-            step: step size for differencing 
+            phi_0: phi(0) initial function value
+            gphi_0: initial directional derivative (grad_f(x_0) . pk)
+            sigma,rho,t1,t2,t3: line search parameters (from Fletcher)
         """
 
         # state parameter 
@@ -437,38 +426,35 @@ class LBFGSNew(Optimizer):
            # choose alphaj from [a+t2(b-a),b-t3(b-a)]
            p01=aj+t2*(bj-aj)
            p02=bj-t3*(bj-aj)
-           alphaj=self._cubic_interpolate(closure,xk,pk,p01,p02,step)
+           alphaj, interp_evals = self._cubic_interpolate(closure,xk,pk,p01,p02)
+           closure_evals += interp_evals
 
            # evaluate phi(alphaj)
            self._copy_params_in(xk)
            # xp <- xk+alphaj. pk
-           self._add_grad(alphaj, pk) #FF param = param + t * grad 
-           phi_j=float(closure().detach())
-          
+           self._add_grad(alphaj, pk)
+           loss_j = closure()
+           phi_j = float(loss_j.detach())
+           closure_evals += 1
+           
            # evaluate phi(aj)
            # xp <- xk+aj. pk
-           self._add_grad(-alphaj+aj, pk) #FF param = param + t * grad 
-           phi_aj=float(closure().detach())
+           self._add_grad(-alphaj+aj, pk)
+           phi_aj = float(closure().detach())
+           closure_evals += 1
 
-           closure_evals +=2
 
            if (phi_j>phi_0+rho*alphaj*gphi_0) or phi_j>=phi_aj :
               bj=alphaj # aj is unchanged
            else:
-              # evaluate grad(alphaj)
-              # xp <- xk+(alphaj+step). pk
-              self._add_grad(-aj+alphaj+step, pk) #FF param = param + t * grad 
-              p01=float(closure().detach())
-              # xp <- xk+(alphaj-step). pk
-              self._add_grad(-2.0*step, pk) #FF param = param + t * grad 
-              p02=float(closure().detach())
-              gphi_j=(p01-p02)/(2.0*step)
-        
-
-              closure_evals +=2
+              # Compute directional derivative at alphaj via backprop
+              if loss_j.requires_grad:
+                  loss_j.backward()
+              g_j = self._gather_flat_grad()
+              gphi_j = g_j.dot(pk).item()
 
               # termination due to roundoff/other errors pp. 38, Fletcher
-              if (aj-alphaj)*gphi_j <= step:
+              if (aj-alphaj)*gphi_j <= 1e-6:
                  alphak=alphaj
                  found_step=True
                  break
@@ -604,7 +590,7 @@ class LBFGSNew(Optimizer):
                    running_avg_sq.addcmul_(g_new,g_old,value=1) # +(grad-newmean)(grad-oldmean)
                    alphabar=1/(1+running_avg_sq.sum()/((state['n_iter']-1)*(grad_nrm)))
                    if be_verbose:
-                     print('iter %d |mean| %f |var| %f ||grad|| %f step %f y^Ts %f alphabar=%f'%(state['n_iter'],running_avg.sum(),running_avg_sq.sum()/(state['n_iter']-1),grad_nrm,t,ys,alphabar))
+                     print('iter %d |mean| %f |var| %f ||grad|| %f step %f y^Ts %f alphabar=%f'%(state['n_iter'],running_avg.sum(),running_avg_sq.sum()/(state['n_iter']-1),grad_nrm,t,ys,alphabar)[...]
 
 
                 if ys > 1e-10*sn*sn and not batch_changed :
@@ -686,7 +672,7 @@ class LBFGSNew(Optimizer):
                 if not cost_use_gradient:
                  torch.set_grad_enabled(False)
                 if not batch_mode:
-                 t=self._linesearch_cubic(closure,d,1e-6) 
+                 t=self._linesearch_cubic(closure,d) 
                 else:
                  t=self._linesearch_backtrack(closure,d,flat_grad,alphabar)
                 if not cost_use_gradient:
