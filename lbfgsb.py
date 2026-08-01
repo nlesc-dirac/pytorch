@@ -138,12 +138,7 @@ class LBFGSB(Optimizer):
             # make a vector
             p = p.detach().flatten()
             params.append(p)
-        x=torch.cat(params,0)
-        for i in range(x.numel()):
-          if (x[i]<self._l[i]):
-              x[i]=self._l[i]
-          elif (x[i]>self._u[i]):
-              x[i]=self._u[i]
+        x=torch.clamp(torch.cat(params,0),self._l,self._u)
         offset = 0
         with torch.no_grad():
           for p in self._params:
@@ -160,12 +155,7 @@ class LBFGSB(Optimizer):
         # l: nx1 lower bound
         # u: nx1 upper bound
         x=torch.cat(self._copy_params_out(),0)
-        projected_g=x-g
-        for i in range(x.numel()):
-            if projected_g[i]<self._l[i]:
-                projected_g[i]=self._l[i]
-            elif projected_g[i]>self._u[i]:
-                projected_g[i]=self._u[i]
+        projected_g=torch.clamp(x-g,self._l,self._u)
         projected_g=projected_g-x
         return max(abs(projected_g))
 
