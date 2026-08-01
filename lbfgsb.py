@@ -138,12 +138,7 @@ class LBFGSB(Optimizer):
             # make a vector
             p = p.detach().flatten()
             params.append(p)
-        x=torch.cat(params,0)
-        for i in range(x.numel()):
-          if (x[i]<self._l[i]):
-              x[i]=self._l[i]
-          elif (x[i]>self._u[i]):
-              x[i]=self._u[i]
+        x=torch.clamp(torch.cat(params,0),self._l,self._u)
         offset = 0
         with torch.no_grad():
           for p in self._params:
@@ -160,13 +155,7 @@ class LBFGSB(Optimizer):
         # l: nx1 lower bound
         # u: nx1 upper bound
         x=torch.cat(self._copy_params_out(),0)
-        projected_g=x-g
-        for i in range(x.numel()):
-            if projected_g[i]<self._l[i]:
-                projected_g[i]=self._l[i]
-            elif projected_g[i]>self._u[i]:
-                projected_g[i]=self._u[i]
-        projected_g=projected_g-x
+        projected_g=torch.clamp(x-g,self._l,self._u) - x
         return max(abs(projected_g))
 
     def _get_breakpoints(self,x,g):
@@ -180,22 +169,23 @@ class LBFGSB(Optimizer):
         # t: nx1 breakpoint vector
         # d: nx1 search direction vector
         # F: nx1 indices that sort t from low to high
-        t=torch.zeros(self._n,1,dtype=self._dtype,device=self._device)
-        d=-g
-        for i in range(self._n):
-            if (g[i]<0.0):
-                t[i]=(x[i]-self._u[i])/g[i]
-            elif (g[i]>0.0):
-                t[i]=(x[i]-self._l[i])/g[i]
-            else:
-                t[i]=self._realmax
+        # vectorized breakpoint computation
+        t = torch.full((self._n,), self._realmax, dtype=self._dtype, device=self._device)
+        d = -g
+        mask_neg = g < 0.0
+        mask_pos = g > 0.0
 
-            if (t[i]<self._eps):
-                d[i]=0.0
+        if mask_neg.any():
+            t[mask_neg] = (x[mask_neg] - self._u[mask_neg]) / g[mask_neg]
+        if mask_pos.any():
+            t[mask_pos] = (x[mask_pos] - self._l[mask_pos]) / g[mask_pos]
 
-        F=torch.argsort(t.squeeze())
+        # deactivate directions with very small breakpoint
+        d[t < self._eps] = 0.0
 
-        return t,d.unsqueeze(-1),F
+        F = torch.argsort(t)
+        return t.unsqueeze(-1), d.unsqueeze(-1), F
+
 
     def _get_cauchy_point(self,g):
         # Generalized Cauchy point
